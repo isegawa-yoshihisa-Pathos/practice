@@ -1,10 +1,13 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TaskListItem } from '../task-list-item/task-list-item';
 import { TaskForm } from '../task-form/task-form';
 import { Task } from '../../models/task';
 import { NzListModule } from 'ng-zorro-antd/list';
+import { Firestore,collection, addDoc, Timestamp, collectionData  } from '@angular/fire/firestore';
+import { map } from 'rxjs/operators';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-task-list',
@@ -12,18 +15,43 @@ import { NzListModule } from 'ng-zorro-antd/list';
   templateUrl: './task-list.html',
   styleUrl: './task-list.css',
 })
-export class TaskList implements OnInit {
-  constructor() {}
+export class TaskList {
+  constructor() { }
 
-  tasks: Task[] = [
-    {title: '牛乳を買う', done: false, deadline: new Date('2026-04-09')},
-    {title: '可燃ゴミを出す', done: true, deadline: new Date('2026-04-01')},
-    {title: '銀行に行く', done: false, deadline: new Date('2026-04-02')},
-  ];
+  private readonly firestore = inject(Firestore);
+  private sub?: Subscription;
 
-  ngOnInit() {}
+  tasks: Task[] = [];
+
+ngOnInit() {
+  const ref = collection(this.firestore, 'tasks');
+  this.sub = collectionData(ref, { idField: 'id' })
+    .pipe(
+      map((rows) =>
+        (rows as Record<string, unknown>[]).map((data) => {
+          const raw = data['deadline'];
+          const deadline =
+            raw instanceof Timestamp
+              ? raw.toDate()
+              : raw instanceof Date
+                ? raw
+                : raw
+                  ? new Date(raw as string | number)
+                  : null;
+          return { ...data, deadline } as Task;
+        }),
+      ),
+    )
+    .subscribe((tasks) => {
+      this.tasks = tasks;
+    });
+}
 
   addTask(task: Task) {
-    this.tasks.push(task);
+    addDoc(collection(this.firestore, 'tasks'), task);
+  }
+
+  ngOnDestroy() {
+    this.sub?.unsubscribe();
   }
 }
