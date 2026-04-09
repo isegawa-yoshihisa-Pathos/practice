@@ -1,4 +1,12 @@
-import { Component, inject, OnDestroy, OnInit } from '@angular/core';
+import {
+  Component,
+  inject,
+  Input,
+  OnChanges,
+  OnDestroy,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TaskListItem } from '../task-list-item/task-list-item';
@@ -9,6 +17,7 @@ import { Firestore, collection, addDoc, Timestamp, collectionData } from '@angul
 import { map } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../auth.service';
+import { TaskScope } from '../task-scope';
 
 @Component({
   selector: 'app-task-list',
@@ -16,19 +25,40 @@ import { AuthService } from '../auth.service';
   templateUrl: './task-list.html',
   styleUrl: './task-list.css',
 })
-export class TaskList implements OnInit, OnDestroy {
+export class TaskList implements OnInit, OnDestroy, OnChanges {
   private readonly firestore = inject(Firestore);
   private readonly auth = inject(AuthService);
   private sub?: Subscription;
 
+  @Input() taskScope: TaskScope = { kind: 'private' };
+
   tasks: Task[] = [];
 
   ngOnInit() {
+    this.subscribeTasks();
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['taskScope'] && !changes['taskScope'].firstChange) {
+      this.subscribeTasks();
+    }
+  }
+
+  private subscribeTasks() {
+    this.sub?.unsubscribe();
+    this.sub = undefined;
+    this.tasks = [];
+
     const username = this.auth.username();
     if (!username) {
       return;
     }
-    const ref = collection(this.firestore, 'accounts', username, 'tasks');
+
+    const ref =
+      this.taskScope.kind === 'private'
+        ? collection(this.firestore, 'accounts', username, 'tasks')
+        : collection(this.firestore, 'projects', this.taskScope.projectId, 'tasks');
+
     this.sub = collectionData(ref, { idField: 'id' })
     .pipe(
       map((rows) =>
@@ -61,7 +91,11 @@ export class TaskList implements OnInit, OnDestroy {
     if (!username) {
       return;
     }
-    addDoc(collection(this.firestore, 'accounts', username, 'tasks'), task);
+    const col =
+      this.taskScope.kind === 'private'
+        ? collection(this.firestore, 'accounts', username, 'tasks')
+        : collection(this.firestore, 'projects', this.taskScope.projectId, 'tasks');
+    addDoc(col, task);
   }
 
   ngOnDestroy() {

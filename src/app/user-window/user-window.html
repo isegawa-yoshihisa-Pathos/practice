@@ -1,6 +1,101 @@
 <nz-page-header nzTitle="AngularTodo"></nz-page-header>
 <div class="user-window">
-    <div class="username">ユーザー名：{{ auth.username() }}</div>
-    <button nz-button nzType="primary" (click)="signOut()">Sign out</button>
+  <div class="username">ユーザー名：{{ auth.username() }}</div>
+  <button nz-button nzType="primary" (click)="signOut()">Sign out</button>
 </div>
-<app-task-list></app-task-list>
+
+<nav class="primary-nav" aria-label="表示の切り替え">
+  <button
+    type="button"
+    class="nav-tab"
+    [class.active]="mainTab() === 'private'"
+    (click)="selectPrivate()"
+  >
+    プライベート
+  </button>
+  <button
+    type="button"
+    class="nav-tab"
+    [class.active]="isProjectHubActive()"
+    (click)="selectProjectHub()"
+  >
+    プロジェクト
+  </button>
+  @for (p of memberships; track p.projectId) {
+    <button
+      type="button"
+      class="nav-tab nav-tab-project"
+      [class.active]="isProjectTabActive(p.projectId)"
+      (click)="openProject(p)"
+    >
+      {{ p.projectName }}
+    </button>
+  }
+</nav>
+
+@if (mainTab() === 'private') {
+  <section class="section">
+    <app-task-list [taskScope]="privateScope"></app-task-list>
+  </section>
+}
+
+@if (mainTab() === 'project') {
+  <section class="section project-section">
+    @if (!activeProject()) {
+      <div class="project-hub">
+        <div class="project-forms">
+          <div class="form-card">
+            <h3 class="card-title">プロジェクトを作成</h3>
+            <input
+              nz-input
+              class="field"
+              placeholder="プロジェクト名"
+              [(ngModel)]="createProjectName"
+              name="createProjectName"
+            />
+            <input
+              nz-input
+              class="field"
+              type="password"
+              placeholder="パスワード"
+              [(ngModel)]="createPassword"
+              name="createPassword"
+            />
+            <button nz-button nzType="primary" (click)="onCreateProject()">作成</button>
+          </div>
+          <div class="form-card">
+            <h3 class="card-title">プロジェクトに参加</h3>
+            <p class="hint">プロジェクト名とパスワードが分かれば誰でも参加できます。</p>
+            <input
+              nz-input
+              class="field"
+              placeholder="プロジェクト名"
+              [(ngModel)]="joinProjectName"
+              name="joinProjectName"
+            />
+            <input
+              nz-input
+              class="field"
+              type="password"
+              placeholder="パスワード"
+              [(ngModel)]="joinPassword"
+              name="joinPassword"
+            />
+            <button nz-button nzType="primary" (click)="onJoinProject()">参加</button>
+          </div>
+        </div>
+      </div>
+    } @else {
+      <div class="project-detail">
+        <div class="project-detail-toolbar">
+          <button nz-button nzType="primary" nzDanger (click)="onDeleteProject()">
+            プロジェクトを削除
+          </button>
+        </div>
+        <h3 class="project-heading">{{ activeProject()!.name }}</h3>
+        <app-project-members [projectId]="activeProject()!.id"></app-project-members>
+        <app-task-list [taskScope]="projectTaskScope()"></app-task-list>
+      </div>
+    }
+  </section>
+}

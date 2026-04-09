@@ -1,20 +1,125 @@
 app-task-list {
-    display: block;
-    margin: 0 1rem;
+  display: block;
+  margin: 0 1rem;
 }
 
 .user-window {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.75rem;
 }
 
 .username {
-    font-size: 15px;
+  font-size: 15px;
 }
 
-button {
-    width: 15%;
-    margin-left: 10px;
-    margin-right: 10px;
+.user-window button {
+  width: auto;
+  min-width: 100px;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+
+.primary-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 1rem 1rem;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.nav-tab {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.nav-tab:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.nav-tab.active {
+  border-color: #1890ff;
+  background: #e6f7ff;
+  color: #096dd9;
+  font-weight: 600;
+}
+
+.nav-tab-project {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.project-hub {
+  margin: 0 1rem;
+}
+
+.project-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.form-card {
+  flex: 1;
+  min-width: 260px;
+  max-width: 400px;
+  padding: 16px;
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  background: #fafafa;
+}
+
+.card-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.field {
+  display: block;
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.project-detail {
+  margin: 0 1rem;
+}
+
+.project-detail-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.project-detail-toolbar button {
+  width: auto;
+}
+
+.project-heading {
+  margin: 12px 0 16px;
+  font-size: 17px;
 }

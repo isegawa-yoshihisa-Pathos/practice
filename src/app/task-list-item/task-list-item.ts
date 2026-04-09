@@ -6,6 +6,7 @@ import { NzCheckboxModule } from 'ng-zorro-antd/checkbox';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { doc, Firestore, updateDoc } from '@angular/fire/firestore';
 import { AuthService } from '../auth.service';
+import { TaskScope } from '../task-scope';
 
 @Component({
   selector: 'app-task-list-item',
@@ -20,6 +21,7 @@ export class TaskListItem implements OnInit {
   ngOnInit() {}
 
   @Input() task: Task = { title: '', label: '', done: false, deadline: new Date() };
+  @Input() taskScope: TaskScope = { kind: 'private' };
 
   labelBackground(): Record<string, string> {
     const c = this.task.label?.trim();
@@ -36,7 +38,10 @@ export class TaskListItem implements OnInit {
     if (!id || !username) {
       return;
     }
-    const ref = doc(this.firestore, 'accounts', username, 'tasks', id);
+    const ref =
+      this.taskScope.kind === 'private'
+        ? doc(this.firestore, 'accounts', username, 'tasks', id)
+        : doc(this.firestore, 'projects', this.taskScope.projectId, 'tasks', id);
     updateDoc(ref, { done }).catch((err) => console.error('updateDoc failed:', err));
   }
 
