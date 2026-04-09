@@ -1,19 +1,29 @@
-.left {
-    float: left;
-  }
-  
-  .right {
-    float: right;
-    :last-child {
-      margin-right: 0;
-    }
-  } 
-
-.done {
-    color: gray;
-    text-decoration: line-through;
+.task-row {
+  padding: 6px 8px;
+  border-radius: 4px;
+  overflow: auto;
 }
 
-.overdue {
-    background-color: #ff8585;
+.left {
+  float: left;
+}
+
+.right {
+  float: right;
+  :last-child {
+    margin-right: 0;
+  }
+}
+
+.done {
+  color: gray;
+  text-decoration: line-through;
+}
+
+.task-row.overdue {
+  box-shadow: inset 4px 0 0 #f5222d;
+}
+
+.task-row.done {
+  opacity: 0.5;
 }

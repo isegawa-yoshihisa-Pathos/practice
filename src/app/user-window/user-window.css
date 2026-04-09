@@ -3,7 +3,18 @@ app-task-list {
     margin: 0 1rem;
 }
 
+.user-window {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.username {
+    font-size: 15px;
+}
+
 button {
-    width: 18%;
-    margin-left: 80%;
+    width: 15%;
+    margin-left: 10px;
+    margin-right: 10px;
 }

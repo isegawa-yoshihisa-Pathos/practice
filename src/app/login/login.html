@@ -1,8 +1,15 @@
 <div class="login">
+    <div class="title">Angular-Todo</div>
     <div class="pane">
-        <label>Angular-Todo</label>
-        <input type="email" placeholder="email" [(ngModel)]="email">
-        <input type="password" placeholder="password" [(ngModel)]="password">
-        <button (click)="signIn()">Sign in</button>
+        <div class="input-container">
+            <label class="subtitle">Sign in</label>
+            <input type="text" placeholder="username" [(ngModel)]="username">
+            <input type="password" placeholder="password" [(ngModel)]="password">
+        </div>
+        <div class="button-container">
+            <button type='submit' (click)="signIn()">Sign in</button>
+            <label class="message">Don't have an account?</label>
+            <button (click)="makeAccount()">Make account</button>
+        </div>
     </div>
 </div>

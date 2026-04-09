@@ -1,7 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { AuthService } from '../auth.service';
 
 @Component({
   selector: 'app-login',
@@ -10,18 +11,26 @@ import { Router } from '@angular/router';
   styleUrl: './login.css',
 })
 export class Login {
-  constructor(
-    private router: Router
-  ) {}
+  private readonly router = inject(Router);
+  private readonly auth = inject(AuthService);
 
-  email: string = '';
-  password: string = '';
+  public username: string = '';
+  public password: string = '';
 
-  signIn() {
-    if (this.email === 'admin' && this.password === 'pass') {
-      this.router.navigate(['/user-window']);
-    } else {
-      alert('Invalid email or password');
+  async signIn() {
+    try {
+      const ok = await this.auth.signIn(this.username, this.password);
+      if (ok) {
+        await this.router.navigate(['/user-window']);
+      } else {
+        alert('ユーザー名またはパスワードが正しくありません');
+      }
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'ログインに失敗しました');
     }
+  }
+
+  makeAccount() {
+    void this.router.navigate(['/signup']);
   }
 }

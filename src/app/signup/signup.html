@@ -1,0 +1,14 @@
+<div class="signup">
+    <label class="title">Angular-Todo</label>
+    <div class="pane">
+        <div class="input-container">
+            <label class="subtitle">Make Account</label>
+            <input type="text" placeholder="username" [(ngModel)]="username">
+            <input type="password" placeholder="password" [(ngModel)]="password">
+        </div>
+        <div class="button-container">
+          <button (click)="signUp()">Sign up</button>
+          <button (click)="backToLogin()">Back to Login</button>
+        </div>
+    </div>
+</div>

@@ -1,3 +1,6 @@
 <nz-page-header nzTitle="AngularTodo"></nz-page-header>
-<button nz-button nzType="primary" (click)="signOut()">Sign out</button>
+<div class="user-window">
+    <div class="username">ユーザー名：{{ auth.username() }}</div>
+    <button nz-button nzType="primary" (click)="signOut()">Sign out</button>
+</div>
 <app-task-list></app-task-list>

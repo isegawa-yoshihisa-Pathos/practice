@@ -1,5 +1,18 @@
-<nz-input-group nzCompact>
+<div class="form-block">
+  <nz-input-group nzCompact>
     <input nz-input placeholder="To do" [(ngModel)]="newTask.title" name="title" #title="ngModel" autofocus required>
     <nz-date-picker [(ngModel)]="newTask.deadline"></nz-date-picker>
-    <button nz-button nzType="primary" (click)="submit()" [disabled]="title.invalid">追加</button>
-</nz-input-group>
+    <button nz-button nzType="primary" type='submit' (click)="submit()" [disabled]="title.invalid">追加</button>
+  </nz-input-group>
+  <div class="palette" role="listbox" aria-label="ラベル色">
+    <button
+      type="button"
+      *ngFor="let c of colorChart"
+      class="swatch"
+      [style.backgroundColor]="c"
+      [class.selected]="newTask.label === c"
+      [attr.aria-pressed]="newTask.label === c"
+      (click)="newTask.label = c"
+    ></button>
+  </div>
+</div>

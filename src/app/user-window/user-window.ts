@@ -1,24 +1,25 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TaskList } from '../task-list/task-list';
 import { NzPageHeaderModule } from 'ng-zorro-antd/page-header';
-import {Router} from '@angular/router';
+import { NzButtonModule } from 'ng-zorro-antd/button';
+import { Router } from '@angular/router';
+import { AuthService } from '../auth.service';
 
 @Component({
   selector: 'app-user-window',
   standalone: true,
-  imports: [CommonModule, FormsModule, TaskList, NzPageHeaderModule],
+  imports: [CommonModule, FormsModule, TaskList, NzPageHeaderModule, NzButtonModule],
   templateUrl: './user-window.html',
-  styleUrl: './user-window.css'
+  styleUrl: './user-window.css',
 })
+export class UserWindow {
+  private readonly router = inject(Router);
+  readonly auth = inject(AuthService);
 
-export class UserWindow { 
-  constructor(
-    private router: Router
-  ) {}
-  
   signOut() {
-    this.router.navigate(['/login']);
+    this.auth.signOut();
+    void this.router.navigate(['/login']);
   }
 }

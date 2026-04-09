@@ -1,4 +1,9 @@
-<div class="{{ isOverdue(task) ? 'overdue' : '' }}">
+<div
+  class="task-row"
+  [class.overdue]="isOverdue(task)"
+  [class.done]="task.done"
+  [ngStyle]="labelBackground()"
+>
   <div class="left">
     <label
       nz-checkbox
