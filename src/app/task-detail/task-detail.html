@@ -31,6 +31,13 @@
     </div>
 
     <div class="field">
+      <label class="field-label">優先度</label>
+      <nz-select [(ngModel)]="editPriority" name="priority" class="priority-field">
+        <nz-option *ngFor="let p of priorityOptions" [nzValue]="p.value" [nzLabel]="p.label"></nz-option>
+      </nz-select>
+    </div>
+
+    <div class="field">
       <label class="field-label">期日</label>
       <nz-date-picker [(ngModel)]="editDeadline" name="deadline" class="date-input"></nz-date-picker>
     </div>

@@ -16,11 +16,24 @@ import { NzButtonModule } from 'ng-zorro-antd/button';
 import { NzInputModule } from 'ng-zorro-antd/input';
 import { NzDatePickerModule } from 'ng-zorro-antd/date-picker';
 import { DEFAULT_TASK_LABEL_COLOR, TASK_COLOR_CHART } from '../task-colors';
+import {
+  clampTaskPriority,
+  DEFAULT_TASK_PRIORITY,
+  TASK_PRIORITY_OPTIONS,
+} from '../task-priority';
+import { NzSelectModule } from 'ng-zorro-antd/select';
 
 @Component({
   selector: 'app-task-detail',
   standalone: true,
-  imports: [CommonModule, FormsModule, NzButtonModule, NzInputModule, NzDatePickerModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    NzButtonModule,
+    NzInputModule,
+    NzDatePickerModule,
+    NzSelectModule,
+  ],
   templateUrl: './task-detail.html',
   styleUrl: './task-detail.css',
 })
@@ -32,6 +45,7 @@ export class TaskDetail implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly colorChart = TASK_COLOR_CHART;
+  readonly priorityOptions = TASK_PRIORITY_OPTIONS;
 
   loading = true;
   notFound = false;
@@ -42,6 +56,7 @@ export class TaskDetail implements OnInit {
 
   editTitle = '';
   editLabel: string = DEFAULT_TASK_LABEL_COLOR;
+  editPriority = DEFAULT_TASK_PRIORITY;
   editDeadline: Date | null = null;
   editDescription = '';
 
@@ -96,6 +111,7 @@ export class TaskDetail implements OnInit {
             : null;
     this.editDescription =
       typeof data['description'] === 'string' ? data['description'] : '';
+    this.editPriority = clampTaskPriority(data['priority']);
     this.loading = false;
   }
 
@@ -108,6 +124,7 @@ export class TaskDetail implements OnInit {
     const payload: Record<string, unknown> = {
       title: this.editTitle.trim() || '（無題）',
       label: this.editLabel.trim() || DEFAULT_TASK_LABEL_COLOR,
+      priority: clampTaskPriority(this.editPriority),
       description: this.editDescription,
     };
     if (this.editDeadline) {

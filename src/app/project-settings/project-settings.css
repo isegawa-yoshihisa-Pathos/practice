@@ -1,0 +1,38 @@
+.project-settings {
+  margin: 0 1rem 2rem;
+  max-width: 640px;
+}
+
+.title {
+  margin: 8px 0 4px;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.lead {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.state {
+  margin: 1rem 0;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.toolbar button {
+  width: auto;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 8px;
+}

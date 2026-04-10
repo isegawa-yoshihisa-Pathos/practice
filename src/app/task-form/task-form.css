@@ -3,15 +3,29 @@
 }
 
 nz-input-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+
   input {
-    width: 40%;
+    flex: 1 1 200px;
+    min-width: 0;
   }
+
+  .priority-select {
+    flex: 0 0 130px;
+    min-width: 110px;
+  }
+
   nz-date-picker {
-    width: 40%;
+    flex: 1 1 160px;
+    min-width: 0;
   }
+
   button {
-    margin-left: 3%;
-    width: 17%;
+    flex: 0 0 auto;
   }
 }
 

@@ -12,7 +12,11 @@ import { FormsModule } from '@angular/forms';
 import { TaskListItem } from '../task-list-item/task-list-item';
 import { TaskForm } from '../task-form/task-form';
 import { Task } from '../../models/task';
+import { clampTaskPriority } from '../task-priority';
+import { sortTasks, TaskSortField } from '../task-sort';
 import { NzListModule } from 'ng-zorro-antd/list';
+import { NzSelectModule } from 'ng-zorro-antd/select';
+import { NzRadioModule } from 'ng-zorro-antd/radio';
 import { Firestore, collection, addDoc, Timestamp, collectionData } from '@angular/fire/firestore';
 import { map } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
@@ -21,7 +25,15 @@ import { TaskScope } from '../task-scope';
 
 @Component({
   selector: 'app-task-list',
-  imports: [CommonModule, FormsModule, TaskListItem, TaskForm, NzListModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    TaskListItem,
+    TaskForm,
+    NzListModule,
+    NzSelectModule,
+    NzRadioModule,
+  ],
   templateUrl: './task-list.html',
   styleUrl: './task-list.css',
 })
@@ -33,6 +45,25 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   @Input() taskScope: TaskScope = { kind: 'private' };
 
   tasks: Task[] = [];
+
+  /** 未選択は null（ソート条件から除外） */
+  sortKey1: TaskSortField | null = null;
+  sortKey2: TaskSortField | null = null;
+  sortKey3: TaskSortField | null = null;
+  sortAscending = true;
+
+  readonly sortFieldOptions: { value: TaskSortField; label: string }[] = [
+    { value: 'color', label: '色' },
+    { value: 'deadline', label: '期日' },
+    { value: 'priority', label: '優先度' },
+  ];
+
+  get displayTasks(): Task[] {
+    const keys = [this.sortKey1, this.sortKey2, this.sortKey3].filter(
+      (k): k is TaskSortField => k !== null,
+    );
+    return sortTasks(this.tasks, keys, this.sortAscending);
+  }
 
   ngOnInit() {
     this.subscribeTasks();
@@ -79,7 +110,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
                   : null;
           const description =
             typeof data['description'] === 'string' ? data['description'] : '';
-          return { ...data, done, label, deadline, description } as Task;
+          const priority = clampTaskPriority(data['priority']);
+          return { ...data, done, label, deadline, description, priority } as Task;
         }),
       ),
     )

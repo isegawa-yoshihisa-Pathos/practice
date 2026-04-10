@@ -15,14 +15,29 @@
       プライベート
     </button>
     @for (p of memberships; track p.projectId) {
-      <button
-        type="button"
-        class="nav-tab nav-tab-project"
-        [class.active]="isProjectTabActive(p.projectId)"
-        (click)="openProject(p)"
-      >
-        {{ p.projectName }}
-      </button>
+      <span class="nav-tab-project-wrap">
+        <button
+          type="button"
+          class="nav-tab nav-tab-project"
+          [class.active]="isProjectTabActive(p.projectId)"
+          (click)="openProject(p)"
+        >
+          {{ p.projectName }}
+        </button>
+        <button
+          type="button"
+          class="nav-tab-menu"
+          [class.active]="isProjectTabActive(p.projectId)"
+          aria-label="プロジェクトのメンバー・脱退・削除"
+          (click)="openProjectSettings($event, p)"
+        >
+          <span class="vertical-dots" aria-hidden="true">
+            <span class="vdot"></span>
+            <span class="vdot"></span>
+            <span class="vdot"></span>
+          </span>
+        </button>
+      </span>
     }
   </div>
   <div class="nav-cluster nav-cluster-end">
@@ -49,14 +64,7 @@
       <app-project-hub (projectOpened)="onProjectOpened($event)"></app-project-hub>
     } @else {
       <div class="project-detail">
-        <div class="project-detail-toolbar">
-          <button nz-button type="button" (click)="onLeaveProject()">プロジェクトを脱退</button>
-          <button nz-button nzType="primary" nzDanger type="button" (click)="onDeleteProject()">
-            プロジェクトを削除
-          </button>
-        </div>
         <h3 class="project-heading">{{ activeProject()!.name }}</h3>
-        <app-project-members [projectId]="activeProject()!.id"></app-project-members>
         <app-task-list [taskScope]="projectTaskScope()"></app-task-list>
       </div>
     }

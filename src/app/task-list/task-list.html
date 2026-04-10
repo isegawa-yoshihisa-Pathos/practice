@@ -1,5 +1,40 @@
+<div class="sort-bar">
+  <span class="sort-label">並び替え</span>
+  <nz-select
+    class="sort-select"
+    nzPlaceHolder="第1条件"
+    nzAllowClear
+    [(ngModel)]="sortKey1"
+    name="sortKey1"
+  >
+    <nz-option *ngFor="let o of sortFieldOptions" [nzValue]="o.value" [nzLabel]="o.label"></nz-option>
+  </nz-select>
+  <nz-select
+    class="sort-select"
+    nzPlaceHolder="第2条件"
+    nzAllowClear
+    [(ngModel)]="sortKey2"
+    name="sortKey2"
+  >
+    <nz-option *ngFor="let o of sortFieldOptions" [nzValue]="o.value" [nzLabel]="o.label"></nz-option>
+  </nz-select>
+  <nz-select
+    class="sort-select"
+    nzPlaceHolder="第3条件"
+    nzAllowClear
+    [(ngModel)]="sortKey3"
+    name="sortKey3"
+  >
+    <nz-option *ngFor="let o of sortFieldOptions" [nzValue]="o.value" [nzLabel]="o.label"></nz-option>
+  </nz-select>
+  <nz-radio-group [(ngModel)]="sortAscending" name="sortDir" nzSize="small">
+    <label nz-radio [nzValue]="true">昇順</label>
+    <label nz-radio [nzValue]="false">降順</label>
+  </nz-radio-group>
+</div>
+
 <nz-list nzBordered>
-  <nz-list-item *ngFor="let task of tasks" class="{{task.done ? 'done' : ''}}">
+  <nz-list-item *ngFor="let task of displayTasks" class="{{task.done ? 'done' : ''}}">
     <app-task-list-item [task]="task" [taskScope]="taskScope"></app-task-list-item>
   </nz-list-item>
   <nz-list-item>

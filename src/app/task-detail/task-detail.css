@@ -48,7 +48,8 @@
   border-color: rgba(0, 0, 0, 0.45);
 }
 
-.date-input {
+.date-input,
+.priority-field {
   width: 100%;
   max-width: 280px;
 }

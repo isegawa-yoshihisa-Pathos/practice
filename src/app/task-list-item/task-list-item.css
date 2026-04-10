@@ -3,7 +3,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 8px;
+  padding: 5px 5px;
   border-radius: 4px;
   flex-wrap: wrap;
 }
@@ -12,6 +12,32 @@
   flex: 1 1 auto;
   min-width: 120px;
   padding: 5px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-cb {
+  flex: 0 0 auto;
+}
+
+.priority-mark {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.85);
+  color: rgba(0, 0, 0, 0.75);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.task-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
 }
 
 .center {
@@ -37,7 +63,7 @@
   min-width: auto;
 }
 
-.done {
+.task-title.done {
   color: gray;
   text-decoration: line-through;
 }

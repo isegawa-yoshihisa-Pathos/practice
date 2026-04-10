@@ -1,6 +1,14 @@
 <div class="form-block">
   <nz-input-group nzCompact>
     <input nz-input placeholder="To do" [(ngModel)]="newTask.title" name="title" #title="ngModel" autofocus required>
+    <nz-select
+      [(ngModel)]="newTask.priority"
+      name="priority"
+      nzPlaceHolder="優先度"
+      class="priority-select"
+    >
+      <nz-option *ngFor="let p of priorityOptions" [nzValue]="p.value" [nzLabel]="p.label"></nz-option>
+    </nz-select>
     <nz-date-picker [(ngModel)]="newTask.deadline"></nz-date-picker>
     <button nz-button nzType="primary" type='submit' (click)="submit()" [disabled]="title.invalid">追加</button>
   </nz-input-group>

@@ -71,11 +71,57 @@ app-task-list {
   font-weight: 600;
 }
 
+.nav-tab-project-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  max-width: min(240px, 100%);
+}
+
 .nav-tab-project {
   max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border-radius: 6px 0 0 6px;
+}
+
+.nav-tab-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9d9d9;
+  border-left: none;
+  background: #fff;
+  border-radius: 0 6px 6px 0;
+  padding: 0 8px;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.nav-tab-menu:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.nav-tab-menu.active {
+  border-color: #1890ff;
+  background: #e6f7ff;
+  color: #096dd9;
+}
+
+.vertical-dots {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+}
+
+.vdot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .section {
@@ -84,18 +130,6 @@ app-task-list {
 
 .project-detail {
   margin: 0 1rem;
-}
-
-.project-detail-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.project-detail-toolbar button {
-  width: auto;
 }
 
 .project-heading {

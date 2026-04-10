@@ -10,6 +10,7 @@ import { NzIconModule } from 'ng-zorro-antd/icon';
 import { deleteDoc, doc, Firestore, updateDoc } from '@angular/fire/firestore';
 import { AuthService } from '../auth.service';
 import { TaskScope } from '../task-scope';
+import { priorityShortLabel } from '../task-priority';
 
 @Component({
   selector: 'app-task-list-item',
@@ -24,8 +25,18 @@ export class TaskListItem implements OnInit {
 
   ngOnInit() {}
 
-  @Input() task: Task = { title: '', label: '', done: false, deadline: new Date() };
+  @Input() task: Task = {
+    title: '',
+    label: '',
+    done: false,
+    priority: 3,
+    deadline: new Date(),
+  };
   @Input() taskScope: TaskScope = { kind: 'private' };
+
+  priorityLabel(): string {
+    return priorityShortLabel(this.task.priority);
+  }
 
   labelBackground(): Record<string, string> {
     const c = this.task.label?.trim();

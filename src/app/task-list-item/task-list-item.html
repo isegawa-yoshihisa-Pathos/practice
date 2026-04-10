@@ -10,10 +10,11 @@
       name="done-{{ task.id ?? 'local' }}"
       [ngModel]="task.done"
       (ngModelChange)="onDoneChange($event)"
-      class="{{ task.done ? 'done' : '' }}"
-    >
-      {{ task.title }}
-    </label>
+      class="task-cb"
+      [attr.aria-label]="'完了: ' + task.title"
+    ></label>
+    <span class="priority-mark">{{ priorityLabel() }}</span>
+    <span class="task-title" [class.done]="task.done">{{ task.title }}</span>
   </div>
 
   <div class="center">

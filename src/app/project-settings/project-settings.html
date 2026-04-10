@@ -1,0 +1,23 @@
+<div class="project-settings">
+  <button nz-button nzType="link" type="button" (click)="back()">← 一覧へ戻る</button>
+
+  @if (loading) {
+    <p class="state">読み込み中…</p>
+  } @else if (notFound) {
+    <p class="state">プロジェクトが見つかりません。</p>
+    <button nz-button nzType="primary" type="button" (click)="back()">一覧へ戻る</button>
+  } @else {
+    <h1 class="title">{{ projectName }}</h1>
+    <p class="lead">メンバー一覧・脱退・削除はこちらから行えます。</p>
+
+    <div class="toolbar">
+      <button nz-button type="button" (click)="onLeaveProject()">プロジェクトを脱退</button>
+      <button nz-button nzType="primary" nzDanger type="button" (click)="onDeleteProject()">
+        プロジェクトを削除
+      </button>
+    </div>
+
+    <h2 class="section-title">メンバー</h2>
+    <app-project-members [projectId]="projectId"></app-project-members>
+  }
+</div>

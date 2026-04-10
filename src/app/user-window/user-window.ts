@@ -1,13 +1,11 @@
 import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TaskList } from '../task-list/task-list';
-import { ProjectMembers } from '../project-members/project-members';
 import { ProjectHub, ProjectOpenedPayload } from '../project-hub/project-hub';
 import { NzPageHeaderModule } from 'ng-zorro-antd/page-header';
 import { NzButtonModule } from 'ng-zorro-antd/button';
 import { Router } from '@angular/router';
 import { AuthService } from '../auth.service';
-import { ProjectService } from '../project.service';
 import { ProjectSessionService } from '../project-session.service';
 import { TaskScope } from '../task-scope';
 import { Firestore, collection, collectionData } from '@angular/fire/firestore';
@@ -20,7 +18,6 @@ import { Subscription } from 'rxjs';
   imports: [
     CommonModule,
     TaskList,
-    ProjectMembers,
     ProjectHub,
     NzPageHeaderModule,
     NzButtonModule,
@@ -31,7 +28,6 @@ import { Subscription } from 'rxjs';
 export class UserWindow implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   readonly auth = inject(AuthService);
-  private readonly projectService = inject(ProjectService);
   private readonly projectSession = inject(ProjectSessionService);
   private readonly firestore = inject(Firestore);
   private membershipSub?: Subscription;
@@ -121,49 +117,11 @@ export class UserWindow implements OnInit, OnDestroy {
     this.persistSession();
   }
 
-  async onLeaveProject(): Promise<void> {
-    const p = this.activeProject();
-    const username = this.auth.username();
-    if (!p || !username) {
-      return;
-    }
-    if (
-      !confirm(
-        `「${p.name}」から脱退します。タブ一覧からも消えます。あとから「参加」で再参加できます。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
-    try {
-      await this.projectService.leaveProject(p.id, username);
-      this.activeProject.set(null);
-      this.selectProjectHub();
-      this.persistSession();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : '脱退に失敗しました');
-    }
-  }
-
-  async onDeleteProject(): Promise<void> {
-    const p = this.activeProject();
-    const username = this.auth.username();
-    if (!p || !username) {
-      return;
-    }
-    if (
-      !confirm(
-        `プロジェクト「${p.name}」を削除します。全メンバーの参加情報とタスクが失われます。よろしいですか？`,
-      )
-    ) {
-      return;
-    }
-    try {
-      await this.projectService.deleteProject(p.id, username);
-      this.activeProject.set(null);
-      this.persistSession();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : '削除に失敗しました');
-    }
+  /** タブ横の ⋮ からメンバー・脱退・削除の画面へ */
+  openProjectSettings(ev: Event, p: { projectId: string }): void {
+    ev.stopPropagation();
+    ev.preventDefault();
+    void this.router.navigate(['/project', p.projectId, 'settings']);
   }
 
   isProjectHubActive(): boolean {
