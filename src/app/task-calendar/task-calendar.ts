@@ -248,6 +248,13 @@ export class TaskCalendar {
   /** 月グリッドの日付をクリックしたとき（親は日表示へ切り替え） */
   @Output() pickCalendarDay = new EventEmitter<Date>();
 
+  /** チップ／ブロック上の右クリック（親がコンテキストメニューを開く） */
+  @Output() taskContextMenu = new EventEmitter<{
+    clientX: number;
+    clientY: number;
+    task: Task;
+  }>();
+
   readonly maxMonth = CALENDAR_MONTH_MAX_PER_DAY;
   readonly maxWeek = CALENDAR_WEEK_MAX_PER_DAY;
   readonly maxDay = CALENDAR_DAY_MAX;
@@ -580,5 +587,15 @@ export class TaskCalendar {
   labelColor(task: Task): string {
     const c = task.label?.trim();
     return c || '#e0e0e0';
+  }
+
+  onTaskChipContextMenu(ev: MouseEvent, task: Task): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.taskContextMenu.emit({
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      task,
+    });
   }
 }

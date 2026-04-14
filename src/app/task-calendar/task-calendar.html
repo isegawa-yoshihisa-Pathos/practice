@@ -45,6 +45,7 @@
                     class="task-cal-chip"
                     [style.--label-color]="labelColor(task)"
                     (click)="$event.stopPropagation(); openTask(task)"
+                    (contextmenu)="onTaskChipContextMenu($event, task)"
                   >
                     <span
                       class="task-cal-label-strip"
@@ -87,6 +88,7 @@
                 class="task-cal-chip"
                 [style.--label-color]="labelColor(task)"
                 (click)="openTask(task)"
+                (contextmenu)="onTaskChipContextMenu($event, task)"
               >
                 <span
                   class="task-cal-label-strip"
@@ -124,6 +126,7 @@
                 class="task-cal-chip task-cal-chip-wide task-cal-day-deadline-chip"
                 [style.--label-color]="labelColor(d.task)"
                 (click)="openTask(d.task)"
+                (contextmenu)="onTaskChipContextMenu($event, d.task)"
               >
                 <span
                   class="task-cal-label-strip"
@@ -176,6 +179,7 @@
                 [style.left.%]="(b.laneIndex / b.laneCount) * 100"
                 [style.width.%]="100 / b.laneCount"
                 (click)="openTask(b.task)"
+                (contextmenu)="onTaskChipContextMenu($event, b.task)"
               >
                 <span
                   class="task-cal-label-strip"
@@ -212,6 +216,7 @@
             class="task-cal-chip task-cal-chip-wide"
             [style.--label-color]="labelColor(task)"
             (click)="openTask(task)"
+            (contextmenu)="onTaskChipContextMenu($event, task)"
           >
             <span
               class="task-cal-label-strip"

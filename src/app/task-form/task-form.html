@@ -1,7 +1,7 @@
 <div class="form-block">
   <div class="form-row">
     <mat-form-field appearance="outline" class="title-field" subscriptSizing="dynamic">
-      <mat-label>To do</mat-label>
+      <mat-label>タスク</mat-label>
       <input
         matInput
         placeholder="To do"
@@ -14,8 +14,25 @@
     </mat-form-field>
     @if (taskScope.kind === 'project') {
       <mat-form-field appearance="outline" class="assignee-select" subscriptSizing="dynamic">
-        <mat-label>担当</mat-label>
+        <mat-label>担当者</mat-label>
         <mat-select [(ngModel)]="newTask.assignee" name="assignee" panelClass="assignee-select-panel">
+          <mat-select-trigger class="assignee-select-trigger">
+            @if (newTask.assignee === assigneeNone || !newTask.assignee) {
+              <span>未割り当て</span>
+            } @else if (selectedAssigneeMember(); as sm) {
+              <span class="assignee-option-inner">
+                <app-user-avatar
+                  [userId]="sm.userId"
+                  [displayName]="sm.displayName"
+                  [avatarUrl]="sm.avatarUrl"
+                  size="sm"
+                />
+                <span>{{ sm.displayName }}</span>
+              </span>
+            } @else {
+              <span>{{ newTask.assignee }}</span>
+            }
+          </mat-select-trigger>
           <mat-option [value]="assigneeNone">未割り当て</mat-option>
           <mat-option *ngFor="let m of projectMembers" [value]="m.userId" class="assignee-option-row">
             <span class="assignee-option-inner">

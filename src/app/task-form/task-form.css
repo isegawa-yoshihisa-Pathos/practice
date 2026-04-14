@@ -26,6 +26,23 @@
   min-width: 140px;
 }
 
+.assignee-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+}
+
+.assignee-select-trigger .assignee-option-inner {
+  min-width: 0;
+}
+
+.assignee-select-trigger .assignee-option-inner > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .priority-select {
   flex: 0 0 130px;
   min-width: 110px;

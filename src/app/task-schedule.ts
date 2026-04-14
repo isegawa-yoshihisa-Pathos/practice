@@ -79,6 +79,18 @@ export function isTaskOverdue(task: Task, now: Date = new Date()): boolean {
   return t.getTime() < now.getTime();
 }
 
+/** 締切または予定終了（期限の集計用）。どちらも無ければ null */
+export function taskDueEndAt(task: Task): Date | null {
+  const m = taskScheduleMode(task);
+  if (m === 'deadline' && task.deadline) {
+    return timestampLikeToDate(task.deadline);
+  }
+  if (m === 'window' && task.endAt) {
+    return timestampLikeToDate(task.endAt);
+  }
+  return null;
+}
+
 /** フィルタ・期日ソート用：日単位の代表日（ローカル日の開始） */
 export function filterAnchorDayStart(task: Task): Date | null {
   const m = taskScheduleMode(task);

@@ -1,14 +1,35 @@
 <div
   class="task-row"
   [class.overdue]="isOverdue(task)"
+  [class.is-subtask]="isSubtask"
   [style.--label-color]="labelStripColor()"
   (click)="cycleProgress($event)"
+  (contextmenu)="onRowContextMenu($event)"
 >
   <div
     class="label-strip"
+    [class.label-strip--with-toggle]="showSubtasksToggle"
     [style.background-color]="labelStripColor()"
-    title="クリックで進捗を切り替え（未着手→処理中→完了）"
-  ></div>
+    (click)="$event.stopPropagation()"
+  >
+    @if (showSubtasksToggle) {
+      <button
+        type="button"
+        class="subtasks-toggle"
+        [attr.aria-expanded]="hasSubtasks ? subtasksExpanded : null"
+        [attr.aria-label]="
+          !hasSubtasks
+            ? '子タスクを追加'
+            : subtasksExpanded
+              ? '子タスクを格納'
+              : '子タスクを表示'
+        "
+        (click)="onSubtasksToggleClick($event)"
+      >
+        {{ !hasSubtasks ? '▽' : subtasksExpanded ? '▲' : '▼' }}
+      </button>
+    }
+  </div>
   @if (showDragHandle) {
     <button
       type="button"

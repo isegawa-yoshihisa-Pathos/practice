@@ -1,9 +1,8 @@
-import { Component, Input, OnInit, inject } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Task } from '../../models/task';
 import {
-  firestoreStatusFields,
   nextTaskStatus,
   taskStatusLabel,
   type TaskStatus,
@@ -11,7 +10,7 @@ import {
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { DragDropModule } from '@angular/cdk/drag-drop';
-import { deleteDoc, doc, Firestore, updateDoc } from '@angular/fire/firestore';
+import { doc, Firestore, updateDoc } from '@angular/fire/firestore';
 import { AuthService } from '../auth.service';
 import { TaskScope, taskDetailScopeParam } from '../task-scope';
 import { priorityShortLabel } from '../task-priority';
@@ -25,6 +24,8 @@ import { isTaskOverdue, taskScheduleMode } from '../task-schedule';
 import { UserAvatar } from '../user-avatar/user-avatar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import type { ProjectMemberRow } from '../../models/project-member';
+import { TaskActivityLogService } from '../task-activity-log.service';
+import { taskStatusTransitionPatch } from '../task-firestore-mutation';
 
 @Component({
   selector: 'app-task-list-item',
@@ -36,6 +37,7 @@ export class TaskListItem implements OnInit {
   private readonly firestore = inject(Firestore);
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly taskActivityLog = inject(TaskActivityLogService);
 
   ngOnInit() {}
 
@@ -50,6 +52,21 @@ export class TaskListItem implements OnInit {
   /** プロジェクト時、担当表示名の解決用 */
   @Input() projectMembers: ProjectMemberRow[] = [];
   @Input() showDragHandle = false;
+  /** 子タスク行（インデント・ドラッグは親の範囲内のみ） */
+  @Input() isSubtask = false;
+  /** リスト／カンバンでラベル帯にトグルを出す（ルート行） */
+  @Input() showSubtasksToggle = false;
+  /** フィルタ後に子が1件以上あるか（子ありは ▼/▲、子なしは ▽ と aria 用） */
+  @Input() hasSubtasks = false;
+  @Input() subtasksExpanded = false;
+
+  @Output() toggleSubtasksUi = new EventEmitter<void>();
+  @Output() contextMenuRequest = new EventEmitter<{
+    clientX: number;
+    clientY: number;
+    task: Task;
+  }>();
+  @Output() deleteRequested = new EventEmitter<Task>();
 
   statusLabel(): string {
     return taskStatusLabel(this.task.status);
@@ -104,10 +121,16 @@ export class TaskListItem implements OnInit {
     if (!ref) {
       return;
     }
+    const prev = this.task.status;
     this.task.status = status;
-    updateDoc(ref, firestoreStatusFields(status)).catch((err) =>
-      console.error('updateDoc failed:', err),
-    );
+    void updateDoc(ref, taskStatusTransitionPatch(status, prev))
+      .then(() =>
+        this.taskActivityLog.logUpdate(this.taskScope, {
+          taskId: id,
+          taskTitle: this.task.title,
+        }),
+      )
+      .catch((err) => console.error('updateDoc failed:', err));
   }
 
   /** 色帯または行（操作・ドラッグ以外）のクリックで進捗を循環 */
@@ -116,7 +139,11 @@ export class TaskListItem implements OnInit {
     if (!el) {
       return;
     }
-    if (el.closest('button, a, input, textarea, .drag-handle, .actions')) {
+    if (
+      el.closest(
+        'button, a, input, textarea, .drag-handle, .actions, .subtasks-toggle, .label-strip',
+      )
+    ) {
       return;
     }
     ev.preventDefault();
@@ -169,19 +196,22 @@ export class TaskListItem implements OnInit {
   deleteTask(ev: Event): void {
     ev.preventDefault();
     ev.stopPropagation();
-    const id = this.task.id;
-    const userId = this.auth.userId();
-    if (!id || !userId) {
-      return;
-    }
-    if (!confirm('このタスクを削除しますか？')) {
-      return;
-    }
-    const ref = this.taskDocRef(id);
-    if (!ref) {
-      return;
-    }
-    deleteDoc(ref).catch((err) => console.error('deleteDoc failed:', err));
+    this.deleteRequested.emit(this.task);
+  }
+
+  onRowContextMenu(ev: MouseEvent): void {
+    ev.preventDefault();
+    this.contextMenuRequest.emit({
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      task: this.task,
+    });
+  }
+
+  onSubtasksToggleClick(ev: MouseEvent): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.toggleSubtasksUi.emit();
   }
 
   private taskDocRef(taskId: string) {

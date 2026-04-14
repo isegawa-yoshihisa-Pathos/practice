@@ -1,4 +1,6 @@
-<h2 mat-dialog-title>タスクを追加</h2>
+<h2 mat-dialog-title>
+  {{ data.dialogMode === 'subtask' ? '子タスクを追加' : 'タスクを追加' }}
+</h2>
 <mat-dialog-content class="dialog-body">
   <app-task-form
     [taskScope]="data.taskScope"

@@ -1,14 +1,14 @@
 <div class="login">
     <div class="pane">
         <div class="input-container">
-            <label class="subtitle">Sign in</label>
+            <label class="subtitle">ログイン</label>
             <input type="text" placeholder="ユーザーID（半角英数字）" [(ngModel)]="userId" name="userId">
-            <input type="password" placeholder="password" [(ngModel)]="password">
+            <input type="password" placeholder="パスワード" [(ngModel)]="password">
         </div>
         <div class="button-container">
-            <button type='submit' (click)="signIn()">Sign in</button>
-            <label class="message">Don't have an account?</label>
-            <button (click)="makeAccount()">Make account</button>
+            <button type='submit' (click)="signIn()">ログイン</button>
+            <label class="message">アカウントがない方はこちら</label>
+            <button (click)="makeAccount()">アカウント作成</button>
         </div>
     </div>
 </div>

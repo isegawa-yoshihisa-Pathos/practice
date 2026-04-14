@@ -18,8 +18,22 @@ export interface Task {
   description?: string;
   /** プロジェクトタスクの担当ユーザー名（プライベートでは未使用） */
   assignee?: string | null;
-  /** 手動並び替え用（小さいほど上） */
+  /**
+   * 手動並び替え用（レガシー）。`listOrderIndex` / `kanbanOrderIndex` が無い文書では引き続きこれを参照
+   */
   orderIndex?: number;
+  /** リスト表示での順序（ルート同士・同一親の子同士）。カンバンとは独立 */
+  listOrderIndex?: number;
+  /** カンバン表示での順序（列内のルート・同一親の子同士）。リストとは独立 */
+  kanbanOrderIndex?: number;
   /** カンバン表示時の列 ID（進捗 status とは独立） */
   kanbanColumnId?: string | null;
+  /** 親タスク ID（子タスクのときのみ。1階層のみ） */
+  parentTaskId?: string | null;
+  /** Firestore の作成日時（レポート・集計用） */
+  createdAt?: Date | null;
+  /** Firestore の最終更新日時 */
+  updatedAt?: Date | null;
+  /** 完了にした日時（未完了時は null） */
+  completedAt?: Date | null;
 }

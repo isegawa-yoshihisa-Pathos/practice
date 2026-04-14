@@ -1,3 +1,21 @@
+<button
+  type="button"
+  #taskCtxMenuTrigger="matMenuTrigger"
+  [matMenuTriggerFor]="taskCtxMenu"
+  [style.left.px]="contextMenuX"
+  [style.top.px]="contextMenuY"
+  class="task-ctx-menu-anchor"
+  tabindex="-1"
+  aria-hidden="true"
+></button>
+<mat-menu #taskCtxMenu="matMenu">
+  <button mat-menu-item type="button" (click)="ctxNavigateDetail()">詳細</button>
+  @if (ctxTask && !ctxTask.parentTaskId) {
+    <button mat-menu-item type="button" (click)="ctxOpenCreateSubtaskDialog()">子タスクを作成</button>
+  }
+  <button mat-menu-item type="button" (click)="ctxDeleteTask()">タスクを削除</button>
+</mat-menu>
+
 <div class="task-toolbar-wrap">
   <div class="task-toolbar-row task-toolbar-row-filters">
     <button
@@ -7,6 +25,14 @@
       aria-label="タスクを追加"
     >
       タスクを追加+
+    </button>
+    <button
+      type="button"
+      class="task-report-btn"
+      (click)="openReportPage()"
+      aria-label="レポート"
+    >
+      レポート
     </button>
     <div class="filter-bar">
       <span class="filter-label">絞り込み</span>
@@ -186,19 +212,47 @@
       (cdkDropListDropped)="onTaskDrop($event)"
       [cdkDropListDisabled]="!canReorder"
     >
-      <div
-        *ngFor="let task of displayTasks; trackBy: trackByTaskId"
-        cdkDrag
-        class="task-list-drag-row"
-        [cdkDragDisabled]="!canReorder"
-      >
-        <app-task-list-item
-          [task]="task"
-          [taskScope]="taskScope"
-          [projectMembers]="projectMembers"
-          [showDragHandle]="canReorder"
-        ></app-task-list-item>
-      </div>
+      @for (task of displayRootTasks; track task.id) {
+        <div
+          cdkDrag
+          class="task-list-drag-row"
+          [cdkDragData]="{ kind: 'root', task }"
+          [cdkDragDisabled]="!canReorder"
+        >
+          <app-task-list-item
+            [task]="task"
+            [taskScope]="taskScope"
+            [projectMembers]="projectMembers"
+            [showDragHandle]="canReorder"
+            [showSubtasksToggle]="true"
+            [hasSubtasks]="hasChildTasks(task.id)"
+            [subtasksExpanded]="isSubtasksExpanded(task.id)"
+            (toggleSubtasksUi)="onSubtasksToggleForListItem(task)"
+            (contextMenuRequest)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
+            (deleteRequested)="onDeleteTaskFromItem($event)"
+          ></app-task-list-item>
+        </div>
+        @if (task.id && isSubtasksExpanded(task.id)) {
+          @for (st of subtasksForParentList(task.id); track st.id) {
+            <div
+              cdkDrag
+              class="task-list-drag-row task-list-drag-row--sub"
+              [cdkDragData]="{ kind: 'sub', task: st, parentId: task.id }"
+              [cdkDragDisabled]="!canReorder"
+            >
+              <app-task-list-item
+                [task]="st"
+                [taskScope]="taskScope"
+                [projectMembers]="projectMembers"
+                [showDragHandle]="canReorder"
+                [isSubtask]="true"
+                (contextMenuRequest)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
+                (deleteRequested)="onDeleteTaskFromItem($event)"
+              ></app-task-list-item>
+            </div>
+          }
+        }
+      }
     </div>
   </div>
 } @else if (viewMode === 'kanban') {
@@ -230,32 +284,98 @@
             (cdkDropListDropped)="onKanbanDrop($event)"
           >
             @for (task of tasksForKanbanColumnId(col.id); track task.id) {
-              <div
-                cdkDrag
-                [cdkDragData]="task"
-                class="kanban-card"
-                [style.--label-color]="kanbanLabelColor(task)"
-                (click)="onKanbanCardClick($event, task)"
-              >
+              <div class="kanban-card-stack">
                 <div
-                  class="kanban-label-strip"
-                  [style.background-color]="kanbanLabelColor(task)"
-                ></div>
-                <div
-                  class="kanban-card-main"
-                  [class.done]="task.status === 'done'"
-                  [class.in-progress]="task.status === 'in_progress'"
+                  cdkDrag
+                  [cdkDragData]="task"
+                  class="kanban-card"
+                  [style.--label-color]="kanbanLabelColor(task)"
+                  (click)="onKanbanCardClick($event, task)"
+                  (contextmenu)="openTaskContextMenu($event, task)"
                 >
-                  <span class="kanban-card-title">{{ task.title || '（無題）' }}</span>
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    class="kanban-detail-btn"
-                    (click)="openKanbanDetail($event, task)"
+                  <div
+                    class="kanban-label-strip kanban-label-strip--with-toggle"
+                    [style.background-color]="kanbanLabelColor(task)"
                   >
-                    詳細
-                  </button>
+                    <button
+                      type="button"
+                      class="kanban-subtasks-toggle"
+                      [attr.aria-expanded]="
+                        hasChildTasks(task.id) ? isSubtasksExpanded(task.id) : null
+                      "
+                      [attr.aria-label]="
+                        !hasChildTasks(task.id)
+                          ? '子タスクを追加'
+                          : isSubtasksExpanded(task.id)
+                            ? '子タスクを格納'
+                            : '子タスクを表示'
+                      "
+                      (click)="onKanbanSubtasksToggleClick($event, task)"
+                    >
+                      {{
+                        !hasChildTasks(task.id)
+                          ? '▽'
+                          : isSubtasksExpanded(task.id)
+                            ? '▲'
+                            : '▼'
+                      }}
+                    </button>
+                  </div>
+                  <div
+                    class="kanban-card-main"
+                    [class.done]="task.status === 'done'"
+                    [class.in-progress]="task.status === 'in_progress'"
+                  >
+                    <span class="kanban-card-title">{{ task.title || '（無題）' }}</span>
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      class="kanban-detail-btn"
+                      (click)="openKanbanDetail($event, task)"
+                    >
+                      詳細
+                    </button>
+                  </div>
                 </div>
+                @if (task.id && isSubtasksExpanded(task.id)) {
+                  <div
+                    class="kanban-subtasks"
+                    cdkDropList
+                    [id]="kanbanSubListId(task.id)"
+                    (cdkDropListDropped)="onKanbanSubtaskDrop($event, task.id!)"
+                  >
+                    @for (st of subtasksForParentKanban(task.id); track st.id) {
+                      <div
+                        cdkDrag
+                        [cdkDragData]="st"
+                        class="kanban-sub-card"
+                        [style.--label-color]="kanbanLabelColor(st)"
+                        (click)="onKanbanCardClick($event, st)"
+                        (contextmenu)="openTaskContextMenu($event, st)"
+                      >
+                        <div
+                          class="kanban-label-strip"
+                          [style.background-color]="kanbanLabelColor(st)"
+                        ></div>
+                        <div
+                          class="kanban-card-main"
+                          [class.done]="st.status === 'done'"
+                          [class.in-progress]="st.status === 'in_progress'"
+                        >
+                          <span class="kanban-card-title">{{ st.title || '（無題）' }}</span>
+                          <button
+                            mat-stroked-button
+                            type="button"
+                            class="kanban-detail-btn"
+                            (click)="openKanbanDetail($event, st)"
+                          >
+                            詳細
+                          </button>
+                        </div>
+                      </div>
+                    }
+                  </div>
+                }
               </div>
             }
           </div>
@@ -303,12 +423,13 @@
 } @else {
   <div class="task-calendar-shell mat-elevation-z1">
     <app-task-calendar
-      [tasks]="displayTasks"
+      [tasks]="displayRootTasks"
       [taskScope]="taskScope"
       [granularity]="calendarGranularity"
       [viewDate]="calendarViewDate"
       (viewDateChange)="onCalendarViewDateChange($event)"
       (pickCalendarDay)="onPickCalendarDayFromMonth($event)"
+      (taskContextMenu)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
     ></app-task-calendar>
   </div>
 }

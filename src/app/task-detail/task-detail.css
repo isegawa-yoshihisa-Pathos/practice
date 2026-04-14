@@ -213,13 +213,39 @@
   padding: 8px 10px 10px;
   background: #fff;
   border-top: 1px solid #eee;
+  position: relative;
 }
 
-.chat-file-input {
+/** label + input でネイティブにファイル選択（プログラム click はブラウザによってブロックされやすい） */
+.chat-attach-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+.chat-attach-label:hover:not(.chat-attach-disabled) {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.chat-attach-label.chat-attach-disabled {
+  pointer-events: none;
+  opacity: 0.45;
+  cursor: default;
+}
+
+.chat-file-input-native {
   position: absolute;
   width: 0;
   height: 0;
   opacity: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -241,6 +267,107 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.assignee-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.assignee-select-trigger-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subtasks-field .field-label {
+  margin-bottom: 8px;
+}
+
+.subtasks-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 8px;
+  background: #fafafa;
+  font: inherit;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.subtasks-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.subtasks-chevron {
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.65);
+  font-weight: 700;
+}
+
+.subtasks-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.subtasks-item + .subtasks-item {
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.subtasks-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 44px;
+}
+
+.subtasks-label-strip {
+  flex: 0 0 6px;
+  width: 6px;
+  min-height: 100%;
+  align-self: stretch;
+}
+
+.subtasks-link {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.87);
+}
+
+.subtasks-link:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.subtasks-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.subtasks-status {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .error {

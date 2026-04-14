@@ -22,6 +22,7 @@ import {
   collection,
   collectionData,
   query,
+  where,
   orderBy,
   setDoc,
   serverTimestamp,
@@ -43,16 +44,24 @@ import {
   TASK_PRIORITY_OPTIONS,
 } from '../task-priority';
 import { TASK_RETURN_QUERY } from '../task-return-query';
+import { ProjectSessionService, type TaskListViewPrefs } from '../project-session.service';
+import {
+  taskListViewStorageKeyFromDetailParam,
+  taskScopeFromDetailRouteParam,
+} from '../task-scope';
 import {
   firestoreStatusFields,
   normalizeTaskStatusFromDoc,
   TASK_STATUS_OPTIONS,
+  taskStatusLabel,
   type TaskStatus,
 } from '../../models/task-status';
 import type { TaskMessageAttachment } from '../../models/task-message';
 import type { ProjectMemberRow } from '../../models/project-member';
+import type { Task } from '../../models/task';
 import { UserAvatar } from '../user-avatar/user-avatar';
 import { MatRadioModule } from '@angular/material/radio';
+import { TaskActivityLogService } from '../task-activity-log.service';
 import {
   defaultScheduleDatetimeLocalNow,
   defaultScheduleDatetimeLocalOneHourLater,
@@ -88,6 +97,8 @@ export class TaskDetail implements OnInit, OnDestroy {
   private readonly storage = inject(Storage);
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly projectSession = inject(ProjectSessionService);
+  private readonly taskActivityLog = inject(TaskActivityLogService);
 
   @ViewChild('chatScroll') private chatScroll?: ElementRef<HTMLDivElement>;
 
@@ -114,6 +125,8 @@ export class TaskDetail implements OnInit, OnDestroy {
   editEndStr = '';
   editAssignee = '';
   editStatus: TaskStatus = 'todo';
+  /** 読み込み時の進捗（完了日時・ログ用） */
+  private statusAtLoad: TaskStatus = 'todo';
 
   /** 従来フィールド description（チャット移行前）。表示のみ */
   legacyDescription = '';
@@ -135,6 +148,11 @@ export class TaskDetail implements OnInit, OnDestroy {
   projectMembers: ProjectMemberRow[] = [];
   private membersSub?: Subscription;
   private messagesSub?: Subscription;
+
+  /** 直下の子タスク（同一コレクション内 parentTaskId === このタスク） */
+  subtasks: Task[] = [];
+  subtasksExpanded = true;
+  private subtasksSub?: Subscription;
 
   ngOnInit(): void {
     this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
@@ -177,6 +195,15 @@ export class TaskDetail implements OnInit, OnDestroy {
       });
   }
 
+  /** 担当者セレクトのトリガー表示用（一覧のフィルタと同様にアバター＋表示名） */
+  assigneeSelectedMember(): ProjectMemberRow | null {
+    const id = this.editAssignee?.trim();
+    if (!id) {
+      return null;
+    }
+    return this.projectMembers.find((m) => m.userId === id) ?? null;
+  }
+
   private taskDocRef(): DocumentReference | null {
     const userId = this.auth.userId();
     if (!userId || !this.taskId) {
@@ -198,6 +225,111 @@ export class TaskDetail implements OnInit, OnDestroy {
       );
     }
     return doc(this.firestore, 'projects', this.scopeParam, 'tasks', this.taskId);
+  }
+
+  private tasksCollectionRef() {
+    const userId = this.auth.userId();
+    if (!userId) {
+      return null;
+    }
+    if (this.scopeParam === 'private') {
+      return collection(this.firestore, 'accounts', userId, 'tasks');
+    }
+    if (this.scopeParam.startsWith('pl-')) {
+      const listId = this.scopeParam.slice(3);
+      return collection(this.firestore, 'accounts', userId, 'privateTaskLists', listId, 'tasks');
+    }
+    return collection(this.firestore, 'projects', this.scopeParam, 'tasks');
+  }
+
+  private subscribeSubtasks(): void {
+    this.subtasksSub?.unsubscribe();
+    this.subtasksSub = undefined;
+    this.subtasks = [];
+    const col = this.tasksCollectionRef();
+    const tid = this.taskId;
+    if (!col || !tid) {
+      return;
+    }
+    const q = query(col, where('parentTaskId', '==', tid));
+    this.subtasksSub = collectionData(q, { idField: 'id' })
+      .pipe(
+        map((rows) =>
+          (rows as Record<string, unknown>[]).map((data) => this.mapSubtaskDoc(data)),
+        ),
+        map((tasks) =>
+          [...tasks].sort((a, b) => {
+            const la = a.listOrderIndex ?? a.orderIndex;
+            const lb = b.listOrderIndex ?? b.orderIndex;
+            const na =
+              typeof la === 'number' && !Number.isNaN(la) ? la : Number.MAX_SAFE_INTEGER;
+            const nb =
+              typeof lb === 'number' && !Number.isNaN(lb) ? lb : Number.MAX_SAFE_INTEGER;
+            if (na !== nb) {
+              return na - nb;
+            }
+            return (a.title ?? '').localeCompare(b.title ?? '');
+          }),
+        ),
+      )
+      .subscribe((tasks) => {
+        this.subtasks = tasks;
+      });
+  }
+
+  private mapSubtaskDoc(data: Record<string, unknown>): Task {
+    const status = normalizeTaskStatusFromDoc(data);
+    const title = typeof data['title'] === 'string' ? data['title'] : '';
+    const label =
+      typeof data['label'] === 'string' && data['label'].trim() !== '' ? data['label'] : '';
+    const priority = clampTaskPriority(data['priority']);
+    const rawLo = data['listOrderIndex'];
+    const listOrderIndex =
+      typeof rawLo === 'number' && !Number.isNaN(rawLo) ? rawLo : undefined;
+    const rawOi = data['orderIndex'];
+    const orderIndex =
+      typeof rawOi === 'number' && !Number.isNaN(rawOi) ? rawOi : undefined;
+    const rawP = data['parentTaskId'];
+    const parentTaskId =
+      typeof rawP === 'string' && rawP.trim() !== '' ? rawP.trim() : null;
+    return {
+      id: String(data['id'] ?? ''),
+      title,
+      label,
+      status,
+      priority,
+      listOrderIndex,
+      orderIndex,
+      parentTaskId,
+    } as Task;
+  }
+
+  toggleSubtasksExpanded(): void {
+    this.subtasksExpanded = !this.subtasksExpanded;
+  }
+
+  hasSubtasks(): boolean {
+    return this.subtasks.length > 0;
+  }
+
+  subtaskStatusLabel(s: TaskStatus): string {
+    return taskStatusLabel(s);
+  }
+
+  openSubtaskDetail(st: Task): void {
+    const id = st.id;
+    if (!id) {
+      return;
+    }
+    void this.router.navigate(['/task', this.scopeParam, id], {
+      queryParams: this.route.snapshot.queryParams,
+    });
+  }
+
+  /** 子タスク行のラベル帯色（一覧と同じく `label` の #RRGGBB） */
+  subtaskLabelColor(st: Task): string {
+    const c = st.label?.trim();
+    return c || '#e0e0e0';
   }
 
   private subscribeMessages(taskRef: DocumentReference): void {
@@ -272,6 +404,9 @@ export class TaskDetail implements OnInit, OnDestroy {
     this.chatSendError = null;
     this.messagesSub?.unsubscribe();
     this.messagesSub = undefined;
+    this.subtasksSub?.unsubscribe();
+    this.subtasksSub = undefined;
+    this.subtasks = [];
     this.chatMessages = [];
     this.legacyDescription = '';
 
@@ -319,7 +454,9 @@ export class TaskDetail implements OnInit, OnDestroy {
     this.editAssignee =
       typeof rawAs === 'string' && rawAs.trim() !== '' ? rawAs.trim() : '';
     this.editStatus = normalizeTaskStatusFromDoc(data);
+    this.statusAtLoad = this.editStatus;
     this.subscribeMessages(ref);
+    this.subscribeSubtasks();
     this.loading = false;
   }
 
@@ -379,6 +516,12 @@ export class TaskDetail implements OnInit, OnDestroy {
       payload['startAt'] = deleteField();
       payload['endAt'] = deleteField();
     }
+    payload['updatedAt'] = serverTimestamp();
+    if (this.editStatus === 'done' && this.statusAtLoad !== 'done') {
+      payload['completedAt'] = serverTimestamp();
+    } else if (this.editStatus !== 'done') {
+      payload['completedAt'] = deleteField();
+    }
     if (this.scopeParam !== 'private' && !this.scopeParam.startsWith('pl-')) {
       const a =
         typeof this.editAssignee === 'string' ? this.editAssignee.trim() : '';
@@ -390,10 +533,20 @@ export class TaskDetail implements OnInit, OnDestroy {
     }
     try {
       await updateDoc(ref, payload);
-      this.navigateBackToTaskShell();
     } catch (e) {
       this.saveError = e instanceof Error ? e.message : '保存に失敗しました';
+      return;
     }
+    this.statusAtLoad = this.editStatus;
+    try {
+      await this.taskActivityLog.logUpdate(taskScopeFromDetailRouteParam(this.scopeParam), {
+        taskId: this.taskId,
+        taskTitle: this.editTitle.trim() || '（無題）',
+      });
+    } catch (e) {
+      console.error('task activity log after save failed:', e);
+    }
+    this.navigateBackToTaskShell();
   }
 
   private chatStorageBasePath(messageId: string): string {
@@ -503,6 +656,18 @@ export class TaskDetail implements OnInit, OnDestroy {
             ? 'day'
             : 'month'
         : null;
+    /** グローバル URL ではなく、このタスク所属リストの保存だけを更新（タブごとに前回表示を再現） */
+    const prefs: TaskListViewPrefs = {
+      viewMode:
+        taskView === 'calendar' ? 'calendar' : taskView === 'kanban' ? 'kanban' : 'list',
+      calendarGranularity:
+        calOut === 'week' || calOut === 'day' ? calOut : 'month',
+      calendarViewDateIso: new Date().toISOString(),
+    };
+    this.projectSession.setTaskListViewPref(
+      taskListViewStorageKeyFromDetailParam(this.scopeParam),
+      prefs,
+    );
     const queryParams: Record<string, string | null> = {
       [TASK_RETURN_QUERY.taskView]: taskView,
       [TASK_RETURN_QUERY.cal]: calOut,
@@ -554,5 +719,6 @@ export class TaskDetail implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.membersSub?.unsubscribe();
     this.messagesSub?.unsubscribe();
+    this.subtasksSub?.unsubscribe();
   }
 }

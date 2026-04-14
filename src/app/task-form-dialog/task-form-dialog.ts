@@ -14,6 +14,9 @@ import type { ProjectMemberRow } from '../../models/project-member';
 export interface TaskFormDialogData {
   taskScope: TaskScope;
   projectMembers: ProjectMemberRow[];
+  /** 子タスク追加時はタイトルと親の文脈表示用 */
+  dialogMode?: 'default' | 'subtask';
+  parentTask?: Task;
 }
 
 @Component({

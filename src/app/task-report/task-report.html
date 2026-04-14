@@ -1,0 +1,97 @@
+<div class="task-report-page">
+  <header class="task-report-header">
+    <button mat-stroked-button type="button" (click)="back()">← 戻る</button>
+    <h1 class="task-report-title">レポート</h1>
+  </header>
+
+  @if (loading) {
+    <p class="task-report-loading">読み込み中…</p>
+  } @else {
+    <section class="task-report-section task-report-chart-section" aria-labelledby="report-progress-heading">
+      <h2 id="report-progress-heading" class="task-report-h2">進捗</h2>
+      <div class="task-report-chart-row">
+        <div
+          class="task-report-pie"
+          [style.background]="pieGradient ?? '#eceff1'"
+          role="img"
+          [attr.aria-label]="
+            '未着手 ' +
+            breakdown.todo +
+            '、処理中 ' +
+            breakdown.in_progress +
+            '、完了 ' +
+            breakdown.done
+          "
+        ></div>
+        <ul class="task-report-legend">
+          @for (o of statusLegend; track o.value) {
+            <li class="task-report-legend-item task-report-legend-item--{{ o.value }}">
+              <span class="task-report-legend-swatch"></span>
+              <span>{{ o.label }}</span>
+              <span class="task-report-legend-count">{{ breakdown[o.value] }} 件</span>
+            </li>
+          }
+        </ul>
+      </div>
+    </section>
+
+    <section class="task-report-section" aria-labelledby="report-metrics-heading">
+      <h2 id="report-metrics-heading" class="task-report-h2">直近7日・今後7日</h2>
+      <div class="task-report-metrics">
+        <div class="task-report-metric">
+          <div class="task-report-metric-label">過去7日間に追加されたタスク</div>
+          <div class="task-report-metric-value">{{ addedLast7 }} <span class="unit">件</span></div>
+        </div>
+        <div class="task-report-metric">
+          <div class="task-report-metric-label">過去7日間に完了したタスク</div>
+          <div class="task-report-metric-value">{{ completedLast7 }} <span class="unit">件</span></div>
+        </div>
+        <div class="task-report-metric">
+          <div class="task-report-metric-label">過去7日間に変更されたタスク</div>
+          <div class="task-report-metric-value">{{ updatedLast7 }} <span class="unit">件</span></div>
+        </div>
+        <div class="task-report-metric">
+          <div class="task-report-metric-label">今後7日以内の期限・予定終了（未完了）</div>
+          <div class="task-report-metric-value">{{ dueNext7 }} <span class="unit">件</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="task-report-section" aria-labelledby="report-log-heading">
+      <h2 id="report-log-heading" class="task-report-h2">アクティビティ（最新100件）</h2>
+      <p class="task-report-log-hint">このリストで記録された追加・編集のみ表示します。</p>
+      <div class="task-report-table-wrap">
+        <table class="task-report-table">
+          <thead>
+            <tr>
+              <th scope="col">日時</th>
+              <th scope="col">操作</th>
+              <th scope="col">ユーザー</th>
+              <th scope="col">タスク</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of activityRows; track row.id) {
+              <tr>
+                <td>
+                  @if (row.at) {
+                    {{ row.at | date: 'yyyy/MM/dd HH:mm' }}
+                  } @else {
+                    —
+                  }
+                </td>
+                <td>{{ row.actionLabel }}</td>
+                <td>{{ row.actorDisplayName }}</td>
+                <td class="task-report-cell-title">{{ row.taskTitle }}</td>
+              </tr>
+            } @empty {
+              <tr>
+                <td colspan="4" class="task-report-empty">ログはまだありません。</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  }
+</div>

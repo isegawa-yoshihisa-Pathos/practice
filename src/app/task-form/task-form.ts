@@ -60,6 +60,15 @@ export class TaskForm implements OnInit, OnChanges {
   @Input() taskScope: TaskScope = { kind: 'private', privateListId: 'default' };
   @Input() projectMembers: ProjectMemberRow[] = [];
 
+  /** 選択中の担当者（トリガーにアイコン＋表示名を出すため） */
+  selectedAssigneeMember(): ProjectMemberRow | null {
+    const id = this.newTask.assignee;
+    if (typeof id !== 'string' || id.trim() === '') {
+      return null;
+    }
+    return this.projectMembers.find((m) => m.userId === id) ?? null;
+  }
+
   @Output() addTask = new EventEmitter<Task>();
 
   newTask: Task = this.emptyTask();

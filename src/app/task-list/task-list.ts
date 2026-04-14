@@ -1,14 +1,13 @@
 import {
   Component,
-  DestroyRef,
   inject,
   Input,
   OnChanges,
   OnDestroy,
   OnInit,
   SimpleChanges,
+  ViewChild,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -43,6 +42,7 @@ import {
   addDoc,
   doc,
   Timestamp,
+  serverTimestamp,
   collectionData,
   writeBatch,
   updateDoc,
@@ -53,20 +53,23 @@ import {
 import { map } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
 import { AuthService } from '../auth.service';
-import { TaskScope, taskDetailScopeParam } from '../task-scope';
+import { TaskScope, taskDetailScopeParam, taskListViewStorageKey } from '../task-scope';
 import { saveTaskShellScrollPosition } from '../task-shell-scroll';
 import type { ProjectMemberRow } from '../../models/project-member';
 import { TaskCalendar, type TaskCalendarGranularity } from '../task-calendar/task-calendar';
 import { UserAvatar } from '../user-avatar/user-avatar';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { TASK_RETURN_QUERY } from '../task-return-query';
+import { ProjectSessionService } from '../project-session.service';
 import { timestampLikeToDate } from '../task-schedule';
 import {
   DEFAULT_KANBAN_COLUMNS,
   type KanbanColumn,
 } from '../../models/kanban-column';
 import { TASK_STATUS_OPTIONS } from '../../models/task-status';
+import { TaskActivityLogService } from '../task-activity-log.service';
+import { taskStatusTransitionPatch } from '../task-firestore-mutation';
 
 @Component({
   selector: 'app-task-list',
@@ -94,7 +97,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   private readonly dialog = inject(MatDialog);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  private readonly destroyRef = inject(DestroyRef);
+  private readonly projectSession = inject(ProjectSessionService);
+  private readonly taskActivityLog = inject(TaskActivityLogService);
   private sub?: Subscription;
   private kanbanBoardSub?: Subscription;
 
@@ -149,6 +153,11 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   /** 単一 mat-menu 用（編集ボタンでセット） */
   kanbanEditColumn: KanbanColumn | null = null;
 
+  @ViewChild('taskCtxMenuTrigger') taskCtxMenuTrigger?: MatMenuTrigger;
+  contextMenuX = 0;
+  contextMenuY = 0;
+  ctxTask: Task | null = null;
+
   /** フィルタのスウォッチ用。チャート外の #RRGGBB もその色で表示 */
   labelCssForFilter(hex: string): string {
     const t = hex?.trim() ?? '';
@@ -180,21 +189,36 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     return colorFilterOptions(this.tasks);
   }
 
-  get displayTasks(): Task[] {
+  /** フィルタ適用後のタスク（親子含む） */
+  private filterScopeTasks(): Task[] {
+    const now = new Date();
+    return filterTasks(this.tasks, this.filterState, now, this.isProjectScope);
+  }
+
+  /** リスト用の並びキー（未設定は `orderIndex` にフォールバック） */
+  private listOrderNum(t: Task): number {
+    const v = t.listOrderIndex ?? t.orderIndex;
+    return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
+  }
+
+  /** カンバン用の並びキー（未設定は `orderIndex` にフォールバック） */
+  private kanbanOrderNum(t: Task): number {
+    const v = t.kanbanOrderIndex ?? t.orderIndex;
+    return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
+  }
+
+  /**
+   * リスト・カレンダー用：ルートタスクのみ（子は親の下に別表示／カレンダーでは非表示）
+   */
+  get displayRootTasks(): Task[] {
     const keys = [this.sortKey1, this.sortKey2, this.sortKey3].filter(
       (k): k is TaskSortField => k !== null,
     );
-    const now = new Date();
-    const filtered = filterTasks(
-      this.tasks,
-      this.filterState,
-      now,
-      this.isProjectScope,
-    );
+    const filtered = this.filterScopeTasks().filter((t) => !t.parentTaskId);
     if (keys.length === 0) {
       return [...filtered].sort((a, b) => {
-        const oa = a.orderIndex ?? Number.MAX_SAFE_INTEGER;
-        const ob = b.orderIndex ?? Number.MAX_SAFE_INTEGER;
+        const oa = this.listOrderNum(a);
+        const ob = this.listOrderNum(b);
         if (oa !== ob) {
           return oa - ob;
         }
@@ -202,6 +226,98 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       });
     }
     return sortTasks(filtered, keys, this.sortAscending);
+  }
+
+  /** リスト展開：同一親の子（リスト順のみ） */
+  subtasksForParentList(parentId: string): Task[] {
+    const filtered = this.filterScopeTasks().filter((t) => t.parentTaskId === parentId);
+    return [...filtered].sort((a, b) => {
+      const c = this.listOrderNum(a) - this.listOrderNum(b);
+      if (c !== 0) {
+        return c;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+  }
+
+  /** カンバン展開：同一親の子（カンバン順のみ） */
+  subtasksForParentKanban(parentId: string): Task[] {
+    const filtered = this.filterScopeTasks().filter((t) => t.parentTaskId === parentId);
+    return [...filtered].sort((a, b) => {
+      const c = this.kanbanOrderNum(a) - this.kanbanOrderNum(b);
+      if (c !== 0) {
+        return c;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+  }
+
+  /** 親が子を持つ（フィルタ後に1件以上） */
+  hasChildTasks(parentId: string | undefined): boolean {
+    if (!parentId) {
+      return false;
+    }
+    return this.filterScopeTasks().some((t) => t.parentTaskId === parentId);
+  }
+
+  /** リスト／カンバンで子行の展開状態（親タスク ID） */
+  expandedSubtaskParentIds = new Set<string>();
+
+  toggleSubtasksExpanded(parentId: string): void {
+    const next = new Set(this.expandedSubtaskParentIds);
+    if (next.has(parentId)) {
+      next.delete(parentId);
+    } else {
+      next.add(parentId);
+    }
+    this.expandedSubtaskParentIds = next;
+  }
+
+  isSubtasksExpanded(parentId: string | undefined): boolean {
+    return !!parentId && this.expandedSubtaskParentIds.has(parentId);
+  }
+
+  onSubtasksToggleForListItem(task: Task): void {
+    const id = task.id;
+    if (!id) {
+      return;
+    }
+    if (this.hasChildTasks(id)) {
+      this.toggleSubtasksExpanded(id);
+    } else {
+      this.openSubtaskDialog(task);
+    }
+  }
+
+  /** リスト用：ルート行と展開された子行をフラットに（ドラッグ検証用） */
+  private visibleListRows(): { kind: 'root' | 'sub'; task: Task; parentId?: string }[] {
+    const out: { kind: 'root' | 'sub'; task: Task; parentId?: string }[] = [];
+    for (const t of this.displayRootTasks) {
+      out.push({ kind: 'root', task: t });
+      const id = t.id;
+      if (id && this.isSubtasksExpanded(id)) {
+        for (const s of this.subtasksForParentList(id)) {
+          out.push({ kind: 'sub', task: s, parentId: id });
+        }
+      }
+    }
+    return out;
+  }
+
+  private isValidListRowOrder(
+    rows: { kind: 'root' | 'sub'; task: Task; parentId?: string }[],
+  ): boolean {
+    let currentRootId: string | null = null;
+    for (const r of rows) {
+      if (r.kind === 'root') {
+        currentRootId = r.task.id ?? null;
+      } else {
+        if (!currentRootId || r.parentId !== currentRootId) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   /** フィルタ初期・並び替え条件なしのときだけ手動ドラッグを有効にする */
@@ -220,26 +336,48 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnInit() {
-    this.route.queryParamMap
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((qp) => {
-        const tv = qp.get(TASK_RETURN_QUERY.taskView);
-        if (tv === 'calendar') {
-          this.viewMode = 'calendar';
-          {
-            const cal = qp.get(TASK_RETURN_QUERY.cal);
-            this.calendarGranularity =
-              cal === 'week' ? 'week' : cal === 'day' ? 'day' : 'month';
-          }
-        } else if (tv === 'kanban') {
-          this.viewMode = 'kanban';
-        } else if (tv === 'list') {
-          this.viewMode = 'list';
-        }
-      });
+    /** 表示は常にタブ（taskScope）別 localStorage のみ。URL はグローバルなので初期表示に使わない。 */
+    this.loadViewPrefsFromStorage();
+    this.onTaskListViewUiChange();
+
     this.subscribeTasks();
     this.subscribeProjectMembers();
     void this.subscribeKanbanBoard();
+  }
+
+  private scopeStorageKey(scope: TaskScope): string {
+    return taskListViewStorageKey(scope);
+  }
+
+  /** タブ切り替え直前に、離れるタブの表示を保存 */
+  private persistViewPrefsForLeavingScope(scope: TaskScope): void {
+    this.projectSession.setTaskListViewPref(this.scopeStorageKey(scope), {
+      viewMode: this.viewMode,
+      calendarGranularity: this.calendarGranularity,
+      calendarViewDateIso: this.calendarViewDate.toISOString(),
+    });
+  }
+
+  private loadViewPrefsFromStorage(): void {
+    const pref = this.projectSession.getTaskListViewPref(this.scopeStorageKey(this.taskScope));
+    if (!pref) {
+      this.viewMode = 'list';
+      this.calendarGranularity = 'month';
+      this.calendarViewDate = new Date();
+      return;
+    }
+    this.viewMode = pref.viewMode;
+    this.calendarGranularity = pref.calendarGranularity;
+    const d = new Date(pref.calendarViewDateIso);
+    this.calendarViewDate = Number.isNaN(d.getTime()) ? new Date() : d;
+  }
+
+  private persistCurrentViewPrefsToStorage(): void {
+    this.projectSession.setTaskListViewPref(this.scopeStorageKey(this.taskScope), {
+      viewMode: this.viewMode,
+      calendarGranularity: this.calendarGranularity,
+      calendarViewDateIso: this.calendarViewDate.toISOString(),
+    });
   }
 
   onCalendarViewDateChange(d: Date): void {
@@ -254,8 +392,9 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     this.onTaskListViewUiChange();
   }
 
-  /** ユーザーがリスト/カレンダー/カンバンを切り替えたとき URL を同期（詳細からの戻りと一致させる） */
+  /** ユーザーがリスト/カレンダー/カンバンを切り替えたとき URL と localStorage を同期 */
   onTaskListViewUiChange(): void {
+    this.persistCurrentViewPrefsToStorage();
     const queryParams: Record<string, string | null> = {
       [TASK_RETURN_QUERY.taskView]: this.viewMode,
       [TASK_RETURN_QUERY.cal]:
@@ -270,12 +409,20 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['taskScope'] && !changes['taskScope'].firstChange) {
-      this.subscribeTasks();
-      this.subscribeProjectMembers();
-      void this.subscribeKanbanBoard();
-      if (!this.isProjectScope) {
-        this.filterState = { ...this.filterState, assignee: 'all' };
+    if (changes['taskScope']) {
+      const ch = changes['taskScope'];
+      if (!ch.firstChange && ch.previousValue) {
+        this.persistViewPrefsForLeavingScope(ch.previousValue as TaskScope);
+        this.loadViewPrefsFromStorage();
+        this.onTaskListViewUiChange();
+      }
+      if (!ch.firstChange) {
+        this.subscribeTasks();
+        this.subscribeProjectMembers();
+        void this.subscribeKanbanBoard();
+        if (!this.isProjectScope) {
+          this.filterState = { ...this.filterState, assignee: 'all' };
+        }
       }
     }
   }
@@ -348,9 +495,23 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
             const rawOi = data['orderIndex'];
             const orderIndex =
               typeof rawOi === 'number' && !Number.isNaN(rawOi) ? rawOi : undefined;
+            const rawLo = data['listOrderIndex'];
+            const listOrderIndex =
+              typeof rawLo === 'number' && !Number.isNaN(rawLo) ? rawLo : undefined;
+            const rawKo = data['kanbanOrderIndex'];
+            const kanbanOrderIndex =
+              typeof rawKo === 'number' && !Number.isNaN(rawKo) ? rawKo : undefined;
             const rawKb = data['kanbanColumnId'];
             const kanbanColumnId =
               typeof rawKb === 'string' && rawKb.trim() !== '' ? rawKb.trim() : null;
+            const rawParent = data['parentTaskId'];
+            const parentTaskId =
+              typeof rawParent === 'string' && rawParent.trim() !== ''
+                ? rawParent.trim()
+                : null;
+            const createdAt = timestampLikeToDate(data['createdAt']);
+            const updatedAt = timestampLikeToDate(data['updatedAt']);
+            const completedAt = timestampLikeToDate(data['completedAt']);
             return {
               ...data,
               status,
@@ -362,7 +523,13 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
               priority,
               assignee,
               orderIndex,
+              listOrderIndex,
+              kanbanOrderIndex,
               kanbanColumnId,
+              parentTaskId,
+              createdAt,
+              updatedAt,
+              completedAt,
             } as Task;
           }),
         ),
@@ -406,21 +573,122 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (firstCol) {
       payload['kanbanColumnId'] = firstCol;
     }
-    const maxOrder = this.tasks.reduce(
-      (m, t) => Math.max(m, t.orderIndex ?? -1),
-      -1,
+    const roots = this.tasks.filter((t) => !t.parentTaskId);
+    let maxList = -1;
+    let maxKb = -1;
+    for (const t of roots) {
+      const l = t.listOrderIndex ?? t.orderIndex;
+      if (typeof l === 'number' && !Number.isNaN(l)) {
+        maxList = Math.max(maxList, l);
+      }
+      const k = t.kanbanOrderIndex ?? t.orderIndex;
+      if (typeof k === 'number' && !Number.isNaN(k)) {
+        maxKb = Math.max(maxKb, k);
+      }
+    }
+    const nextList = maxList < 0 ? 0 : maxList + 1000;
+    const nextKb = maxKb < 0 ? 0 : maxKb + 1000;
+    payload['listOrderIndex'] = nextList;
+    payload['kanbanOrderIndex'] = nextKb;
+    payload['orderIndex'] = nextList;
+    payload['createdAt'] = serverTimestamp();
+    payload['updatedAt'] = serverTimestamp();
+    void addDoc(col, payload).then((docRef) =>
+      this.taskActivityLog.logCreate(this.taskScope, {
+        taskId: docRef.id,
+        taskTitle: task.title,
+      }),
     );
-    payload['orderIndex'] = maxOrder < 0 ? 0 : maxOrder + 1000;
-    addDoc(col, payload);
   }
 
-  onTaskDrop(event: CdkDragDrop<Task[]>): void {
+  addSubtask(parent: Task, task: Task): void {
+    const userId = this.auth.userId();
+    const parentId = parent.id;
+    if (!userId || !parentId) {
+      return;
+    }
+    const col = this.tasksCollectionRef(userId);
+    const payload: Record<string, unknown> = {
+      title: task.title,
+      label: task.label,
+      ...firestoreStatusFields(task.status),
+      priority: task.priority,
+      description: task.description ?? '',
+      parentTaskId: parentId,
+    };
+    if (task.deadline) {
+      payload['deadline'] = Timestamp.fromDate(new Date(task.deadline));
+      payload['startAt'] = null;
+      payload['endAt'] = null;
+    } else if (task.startAt && task.endAt) {
+      payload['deadline'] = null;
+      payload['startAt'] = Timestamp.fromDate(new Date(task.startAt));
+      payload['endAt'] = Timestamp.fromDate(new Date(task.endAt));
+    } else {
+      payload['deadline'] = null;
+      payload['startAt'] = null;
+      payload['endAt'] = null;
+    }
+    if (this.taskScope.kind === 'project') {
+      const a = typeof task.assignee === 'string' ? task.assignee.trim() : '';
+      payload['assignee'] = a || null;
+    }
+    const pCol = this.columnIdForTask(parent);
+    payload['kanbanColumnId'] = pCol;
+    const siblings = this.tasks.filter((t) => t.parentTaskId === parentId);
+    let maxList = -1;
+    let maxKb = -1;
+    for (const t of siblings) {
+      const l = t.listOrderIndex ?? t.orderIndex;
+      if (typeof l === 'number' && !Number.isNaN(l)) {
+        maxList = Math.max(maxList, l);
+      }
+      const k = t.kanbanOrderIndex ?? t.orderIndex;
+      if (typeof k === 'number' && !Number.isNaN(k)) {
+        maxKb = Math.max(maxKb, k);
+      }
+    }
+    const nextList = maxList < 0 ? 0 : maxList + 1000;
+    const nextKb = maxKb < 0 ? 0 : maxKb + 1000;
+    payload['listOrderIndex'] = nextList;
+    payload['kanbanOrderIndex'] = nextKb;
+    payload['orderIndex'] = nextList;
+    payload['createdAt'] = serverTimestamp();
+    payload['updatedAt'] = serverTimestamp();
+    void addDoc(col, payload).then((docRef) =>
+      this.taskActivityLog.logCreate(this.taskScope, {
+        taskId: docRef.id,
+        taskTitle: task.title,
+      }),
+    );
+    const next = new Set(this.expandedSubtaskParentIds);
+    next.add(parentId);
+    this.expandedSubtaskParentIds = next;
+  }
+
+  onTaskDrop(event: CdkDragDrop<{ kind: 'root' | 'sub'; task: Task; parentId?: string }[]>): void {
     if (!this.canReorder || event.previousIndex === event.currentIndex) {
       return;
     }
-    const ordered = [...this.displayTasks];
-    moveItemInArray(ordered, event.previousIndex, event.currentIndex);
-    void this.persistTaskOrder(ordered);
+    const rows = [...this.visibleListRows()];
+    moveItemInArray(rows, event.previousIndex, event.currentIndex);
+    if (!this.isValidListRowOrder(rows)) {
+      return;
+    }
+    const moved = event.item.data as { kind: 'root' | 'sub'; task: Task; parentId?: string };
+    if (moved.kind === 'root') {
+      const roots = rows.filter((r) => r.kind === 'root').map((r) => r.task);
+      void this.persistTaskOrder(roots);
+    } else {
+      const pid = moved.parentId;
+      if (!pid) {
+        return;
+      }
+      const subs = rows
+        .filter((r) => r.kind === 'sub' && r.parentId === pid)
+        .map((r) => r.task);
+      void this.persistSubtaskOrder(pid, subs);
+    }
   }
 
   private kanbanBoardDocRef(): ReturnType<typeof doc> | null {
@@ -507,12 +775,20 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   tasksForKanbanColumnId(colId: string): Task[] {
-    const sortFn = (a: Task, b: Task) =>
-      (a.orderIndex ?? Number.MAX_SAFE_INTEGER) - (b.orderIndex ?? Number.MAX_SAFE_INTEGER) ||
-      (a.title ?? '').localeCompare(b.title ?? '');
-    return this.displayTasks
-      .filter((t) => this.columnIdForTask(t) === colId)
-      .sort(sortFn);
+    const filtered = this.filterScopeTasks().filter((t) => !t.parentTaskId);
+    const inCol = filtered.filter((t) => this.columnIdForTask(t) === colId);
+    return [...inCol].sort((a, b) => {
+      const c = this.kanbanOrderNum(a) - this.kanbanOrderNum(b);
+      if (c !== 0) {
+        return c;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+  }
+
+  /** カンバン同一親の子だけをつなぐドロップリスト ID（列リストとは接続しない） */
+  kanbanSubListId(parentId: string): string {
+    return `kanban-sub-${parentId}`;
   }
 
   private buildKanbanColumnState(): Record<string, Task[]> {
@@ -530,9 +806,18 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   /** ドラッグで列間移動（kanbanColumnId のみ更新）。進捗は変えない */
+  onKanbanSubtaskDrop(ev: CdkDragDrop<Task>, parentId: string): void {
+    if (ev.previousIndex === ev.currentIndex) {
+      return;
+    }
+    const arr = [...this.subtasksForParentKanban(parentId)];
+    moveItemInArray(arr, ev.previousIndex, ev.currentIndex);
+    void this.persistKanbanSubtaskOrder(parentId, arr);
+  }
+
   onKanbanDrop(ev: CdkDragDrop<Task>): void {
     const task = ev.item.data as Task | undefined;
-    if (!task?.id) {
+    if (!task?.id || task.parentTaskId) {
       return;
     }
     const fromId = this.parseKanbanColumnId(ev.previousContainer.id);
@@ -584,7 +869,15 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         return;
       }
       const kid = t.kanbanColumnId ?? firstCol;
-      batch.update(r, { orderIndex: i * 1000, kanbanColumnId: kid });
+      batch.update(r, { kanbanOrderIndex: i * 1000, kanbanColumnId: kid });
+      for (const ch of this.tasks) {
+        if (ch.parentTaskId === id && ch.id) {
+          const r2 = this.taskDocRef(ch.id);
+          if (r2) {
+            batch.update(r2, { kanbanColumnId: kid });
+          }
+        }
+      }
     });
     try {
       await batch.commit();
@@ -674,9 +967,23 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     }
   }
 
+  onKanbanSubtasksToggleClick(ev: MouseEvent, task: Task): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const id = task.id;
+    if (!id) {
+      return;
+    }
+    if (this.hasChildTasks(id)) {
+      this.toggleSubtasksExpanded(id);
+    } else {
+      this.openSubtaskDialog(task);
+    }
+  }
+
   onKanbanCardClick(ev: MouseEvent, task: Task): void {
     const el = ev.target as HTMLElement | null;
-    if (!el || el.closest('button')) {
+    if (!el || el.closest('button') || el.closest('.kanban-label-strip')) {
       return;
     }
     ev.preventDefault();
@@ -684,14 +991,20 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (!id) {
       return;
     }
-    const next = nextTaskStatus(task.status);
+    const prev = task.status;
+    const next = nextTaskStatus(prev);
     const ref = this.taskDocRef(id);
     if (!ref) {
       return;
     }
-    updateDoc(ref, firestoreStatusFields(next)).catch((err) =>
-      console.error('kanban status update failed:', err),
-    );
+    void updateDoc(ref, taskStatusTransitionPatch(next, prev))
+      .then(() =>
+        this.taskActivityLog.logUpdate(this.taskScope, {
+          taskId: id,
+          taskTitle: task.title,
+        }),
+      )
+      .catch((err) => console.error('kanban status update failed:', err));
   }
 
   openKanbanDetail(ev: Event, task: Task): void {
@@ -746,6 +1059,10 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         );
   }
 
+  openReportPage(): void {
+    void this.router.navigate(['/report', taskDetailScopeParam(this.taskScope)]);
+  }
+
   openAddTaskDialog(): void {
     const ref = this.dialog.open(TaskFormDialog, {
       width: 'min(96vw, 560px)',
@@ -762,6 +1079,112 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     });
   }
 
+  openSubtaskDialog(parent: Task): void {
+    const ref = this.dialog.open(TaskFormDialog, {
+      width: 'min(96vw, 560px)',
+      autoFocus: 'first-tabbable',
+      data: {
+        taskScope: this.taskScope,
+        projectMembers: this.projectMembers,
+        dialogMode: 'subtask' as const,
+        parentTask: parent,
+      },
+    });
+    ref.afterClosed().subscribe((task: Task | undefined) => {
+      if (task) {
+        this.addSubtask(parent, task);
+      }
+    });
+  }
+
+  openTaskContextMenu(ev: MouseEvent, task: Task): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    this.openTaskContextMenuAt(ev.clientX, ev.clientY, task);
+  }
+
+  openTaskContextMenuAt(clientX: number, clientY: number, task: Task): void {
+    this.ctxTask = task;
+    this.contextMenuX = clientX;
+    this.contextMenuY = clientY;
+    queueMicrotask(() => this.taskCtxMenuTrigger?.openMenu());
+  }
+
+  ctxNavigateDetail(): void {
+    const t = this.ctxTask;
+    if (!t?.id) {
+      return;
+    }
+    const from =
+      this.viewMode === 'kanban'
+        ? 'kanban'
+        : this.viewMode === 'calendar'
+          ? 'calendar'
+          : 'list';
+    saveTaskShellScrollPosition();
+    void this.router.navigate(['/task', taskDetailScopeParam(this.taskScope), t.id], {
+      queryParams: {
+        from,
+        ...(this.viewMode === 'calendar' ? { cal: this.calendarGranularity } : {}),
+      },
+    });
+  }
+
+  ctxOpenCreateSubtaskDialog(): void {
+    const t = this.ctxTask;
+    if (!t?.id || t.parentTaskId) {
+      return;
+    }
+    this.openSubtaskDialog(t);
+  }
+
+  ctxDeleteTask(): void {
+    const t = this.ctxTask;
+    if (!t?.id) {
+      return;
+    }
+    if (!confirm('このタスクを削除しますか？')) {
+      return;
+    }
+    void this.deleteTaskCascade(t.id);
+  }
+
+  onDeleteTaskFromItem(task: Task): void {
+    const id = task.id;
+    if (!id) {
+      return;
+    }
+    if (!confirm('このタスクを削除しますか？')) {
+      return;
+    }
+    void this.deleteTaskCascade(id);
+  }
+
+  private async deleteTaskCascade(rootId: string): Promise<void> {
+    const toDelete = new Set<string>([rootId]);
+    const walk = (pid: string) => {
+      for (const x of this.tasks) {
+        if (x.parentTaskId === pid && x.id) {
+          toDelete.add(x.id);
+          walk(x.id);
+        }
+      }
+    };
+    walk(rootId);
+    const batch = writeBatch(this.firestore);
+    for (const id of toDelete) {
+      const r = this.taskDocRef(id);
+      if (r) {
+        batch.delete(r);
+      }
+    }
+    try {
+      await batch.commit();
+    } catch (e) {
+      console.error('deleteTaskCascade failed:', e);
+    }
+  }
+
   private async persistTaskOrder(ordered: Task[]): Promise<void> {
     const batch = writeBatch(this.firestore);
     ordered.forEach((task, index) => {
@@ -773,12 +1196,60 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       if (!r) {
         return;
       }
-      batch.update(r, { orderIndex: index * 1000 });
+      const v = index * 1000;
+      batch.update(r, { listOrderIndex: v, orderIndex: v });
     });
     try {
       await batch.commit();
     } catch (e) {
       console.error('persistTaskOrder failed:', e);
+    }
+  }
+
+  private async persistSubtaskOrder(parentId: string, ordered: Task[]): Promise<void> {
+    const batch = writeBatch(this.firestore);
+    ordered.forEach((task, index) => {
+      const id = task.id;
+      if (!id) {
+        return;
+      }
+      if (task.parentTaskId !== parentId) {
+        return;
+      }
+      const r = this.taskDocRef(id);
+      if (!r) {
+        return;
+      }
+      const v = index * 1000;
+      batch.update(r, { listOrderIndex: v, orderIndex: v });
+    });
+    try {
+      await batch.commit();
+    } catch (e) {
+      console.error('persistSubtaskOrder failed:', e);
+    }
+  }
+
+  private async persistKanbanSubtaskOrder(parentId: string, ordered: Task[]): Promise<void> {
+    const batch = writeBatch(this.firestore);
+    ordered.forEach((task, index) => {
+      const id = task.id;
+      if (!id) {
+        return;
+      }
+      if (task.parentTaskId !== parentId) {
+        return;
+      }
+      const r = this.taskDocRef(id);
+      if (!r) {
+        return;
+      }
+      batch.update(r, { kanbanOrderIndex: index * 1000 });
+    });
+    try {
+      await batch.commit();
+    } catch (e) {
+      console.error('persistKanbanSubtaskOrder failed:', e);
     }
   }
 

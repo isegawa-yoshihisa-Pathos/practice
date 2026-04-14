@@ -8,12 +8,47 @@
   --label-color: #e0e0e0;
 }
 
+.task-row.is-subtask {
+  margin-left: 20px;
+  width: calc(100% - 20px);
+}
+
 .label-strip {
   flex: 0 0 6px;
   width: 6px;
   min-height: 100%;
   align-self: stretch;
+  cursor: default;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+}
+
+.label-strip--with-toggle {
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  padding: 2px 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.subtasks-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.75);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
   cursor: pointer;
+  border-radius: 0;
 }
 
 .drag-handle {

@@ -47,6 +47,23 @@
         <mat-form-field appearance="outline" class="assignee-field" subscriptSizing="dynamic">
           <mat-label>担当者</mat-label>
           <mat-select [(ngModel)]="editAssignee" name="assignee" panelClass="assignee-select-panel">
+            <mat-select-trigger class="assignee-select-trigger">
+              @if (editAssignee === assigneeNone || !editAssignee) {
+                <span>未割り当て</span>
+              } @else if (assigneeSelectedMember(); as sm) {
+                <span class="assignee-select-trigger-row">
+                  <app-user-avatar
+                    [userId]="sm.userId"
+                    [displayName]="sm.displayName"
+                    [avatarUrl]="sm.avatarUrl"
+                    size="sm"
+                  />
+                  <span>{{ sm.displayName }}</span>
+                </span>
+              } @else {
+                <span>{{ editAssignee }}</span>
+              }
+            </mat-select-trigger>
             <mat-option [value]="assigneeNone">未割り当て</mat-option>
             <mat-option *ngFor="let m of projectMembers" [value]="m.userId" class="assignee-option-row">
               <span class="assignee-option-inner">
@@ -112,6 +129,41 @@
       </div>
     }
 
+    @if (hasSubtasks()) {
+      <div class="field subtasks-field">
+        <span class="field-label">子タスク</span>
+        <button
+          type="button"
+          class="subtasks-toggle-btn"
+          [attr.aria-expanded]="subtasksExpanded"
+          aria-label="子タスク一覧の表示を切り替え"
+          (click)="toggleSubtasksExpanded()"
+        >
+          <span class="subtasks-chevron" aria-hidden="true">{{ subtasksExpanded ? '▲' : '▼' }}</span>
+          <span>{{ subtasks.length }} 件</span>
+        </button>
+        @if (subtasksExpanded) {
+          <ul class="subtasks-list">
+            @for (st of subtasks; track st.id) {
+              <li class="subtasks-item">
+                <div class="subtasks-row">
+                  <span
+                    class="subtasks-label-strip"
+                    [style.background-color]="subtaskLabelColor(st)"
+                    aria-hidden="true"
+                  ></span>
+                  <button type="button" class="subtasks-link" (click)="openSubtaskDetail(st)">
+                    <span class="subtasks-title">{{ st.title.trim() ? st.title : '（無題）' }}</span>
+                    <span class="subtasks-status">{{ subtaskStatusLabel(st.status) }}</span>
+                  </button>
+                </div>
+              </li>
+            }
+          </ul>
+        }
+      </div>
+    }
+
     <div class="field chat-field">
       <label class="field-label">チャット</label>
       <div class="chat-panel mat-elevation-z1">
@@ -172,23 +224,19 @@
           </ul>
         }
         <div class="chat-composer">
-          <input
-            #fileInput
-            type="file"
-            multiple
-            class="chat-file-input"
-            (change)="onChatFilesSelected($event)"
-          />
-          <button
-            mat-icon-button
-            type="button"
-            class="chat-attach-btn"
-            (click)="fileInput.click()"
-            [disabled]="sendingChat"
+          <label
+            class="chat-attach-label"
+            [class.chat-attach-disabled]="sendingChat"
             aria-label="ファイルを添付"
           >
+            <input
+              type="file"
+              multiple
+              class="chat-file-input-native"
+              (change)="onChatFilesSelected($event)"
+            />
             <mat-icon>attach_file</mat-icon>
-          </button>
+          </label>
           <mat-form-field appearance="outline" class="chat-input-field" subscriptSizing="dynamic">
             <mat-label>メッセージ</mat-label>
             <textarea

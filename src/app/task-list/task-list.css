@@ -1,3 +1,14 @@
+.task-ctx-menu-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .task-toolbar-wrap {
   width: 100%;
   margin-bottom: 8px;
@@ -61,6 +72,23 @@
 
 .add-task-plus:hover {
   background: #bae7ff;
+}
+
+.task-report-btn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: #fff;
+  color: rgba(0, 0, 0, 0.78);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-report-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
 }
 
 .filter-bar,
@@ -219,6 +247,10 @@
   border-bottom: none;
 }
 
+.task-list-drag-row--sub {
+  background: rgba(0, 0, 0, 0.04);
+}
+
 .cdk-drag-preview {
   box-sizing: border-box;
   border-radius: 4px;
@@ -310,19 +342,23 @@ app-task-list-item {
 }
 
 /* リスト行（task-list-item）と同じ：左ラベル帯 + color-mix 背景 */
+.kanban-card-stack {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.kanban-card-stack:last-child {
+  margin-bottom: 0;
+}
+
 .kanban-card {
   --label-color: #e0e0e0;
   display: flex;
   align-items: stretch;
   width: 100%;
-  margin-bottom: 8px;
   border-radius: 4px;
   overflow: hidden;
   cursor: grab;
-}
-
-.kanban-card:last-child {
-  margin-bottom: 0;
 }
 
 .kanban-card:active {
@@ -334,6 +370,65 @@ app-task-list-item {
   width: 6px;
   min-height: 100%;
   align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+}
+
+.kanban-label-strip--with-toggle {
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  padding: 2px 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.kanban-subtasks-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  align-self: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: rgba(0, 0, 0, 0.75);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.kanban-subtasks {
+  margin-top: 4px;
+  padding-left: 4px;
+  border-left: 2px solid rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 親カードと同じ：ラベル帯 + タイトル + 詳細（親内でドラッグ並べ替え） */
+.kanban-sub-card {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.kanban-sub-card:active {
+  cursor: grabbing;
+}
+
+.kanban-sub-card .kanban-label-strip {
+  flex: 0 0 6px;
+  width: 6px;
+  min-width: 6px;
 }
 
 .kanban-card-main {
@@ -352,7 +447,8 @@ app-task-list-item {
   background: color-mix(in srgb, var(--label-color) 40%, #fafafa);
 }
 
-.kanban-card:hover .kanban-card-main:not(.done) {
+.kanban-card:hover .kanban-card-main:not(.done),
+.kanban-sub-card:hover .kanban-card-main:not(.done) {
   background: color-mix(in srgb, var(--label-color) 30%, #fafafa);
 }
 
@@ -360,7 +456,8 @@ app-task-list-item {
   background-color: #bdbdbd;
 }
 
-.kanban-card:hover .kanban-card-main.done {
+.kanban-card:hover .kanban-card-main.done,
+.kanban-sub-card:hover .kanban-card-main.done {
   background-color: #b8b8b8;
 }
 
@@ -368,7 +465,8 @@ app-task-list-item {
   background: color-mix(in srgb, var(--label-color) 100%, #fafafa);
 }
 
-.kanban-card:hover .kanban-card-main.in-progress:not(.done) {
+.kanban-card:hover .kanban-card-main.in-progress:not(.done),
+.kanban-sub-card:hover .kanban-card-main.in-progress:not(.done) {
   background: color-mix(in srgb, var(--label-color) 90%, #fafafa);
 }
 
