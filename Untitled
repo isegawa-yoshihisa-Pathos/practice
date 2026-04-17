@@ -1,0 +1,25 @@
+onKanbanCardClick(ev: MouseEvent, task: Task): void {
+    const el = ev.target as HTMLElement | null;
+    if (!el || el.closest('button') || el.closest('.kanban-label-strip')) {
+      return;
+    }
+    ev.preventDefault();
+    const id = task.id;
+    if (!id) {
+      return;
+    }
+    const prev = task.status;
+    const next = nextTaskStatus(prev);
+    const ref = this.taskDocRef(id);
+    if (!ref) {
+      return;
+    }
+    void updateDoc(ref, taskStatusTransitionPatch(next, prev))
+      .then(() =>
+        this.taskActivityLog.logUpdate(this.taskScope, {
+          taskId: id,
+          taskTitle: task.title,
+        }),
+      )
+      .catch((err) => console.error('kanban status update failed:', err));
+  }

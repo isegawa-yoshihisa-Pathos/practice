@@ -11,6 +11,8 @@ export interface TaskListViewPrefs {
   calendarGranularity: 'month' | 'week' | 'day';
   /** ISO 8601（カレンダー基準日） */
   calendarViewDateIso: string;
+  /** 週の始まり（月・週表示の列順） */
+  calendarWeekdayStart?: 'Sunday' | 'Monday';
 }
 
 export interface ProjectSessionState {
@@ -150,10 +152,14 @@ export class ProjectSessionService {
           typeof iso === 'string' &&
           iso.length > 0
         ) {
+          const wds = o['calendarWeekdayStart'];
+          const weekdayStart =
+            wds === 'Sunday' || wds === 'Monday' ? wds : undefined;
           out[k] = {
             viewMode: vm,
             calendarGranularity: cg,
             calendarViewDateIso: iso,
+            ...(weekdayStart ? { calendarWeekdayStart: weekdayStart } : {}),
           };
         }
       }

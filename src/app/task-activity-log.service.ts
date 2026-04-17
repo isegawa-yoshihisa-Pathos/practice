@@ -8,7 +8,7 @@ import {
 import { AuthService } from './auth.service';
 import type { TaskScope } from './task-scope';
 
-export type TaskActivityAction = 'create' | 'update';
+export type TaskActivityAction = 'create' | 'update' | 'delete';
 
 @Injectable({ providedIn: 'root' })
 export class TaskActivityLogService {
@@ -75,6 +75,29 @@ export class TaskActivityLogService {
       });
     } catch (e) {
       console.error('task activity log (update) failed:', e);
+    }
+  }
+
+  async logDelete(
+    scope: TaskScope,
+    payload: { taskId: string; taskTitle: string },
+  ): Promise<void> {
+    const uid = this.auth.userId();
+    if (!uid) {
+      return;
+    }
+    const title = payload.taskTitle.trim().slice(0, 500) || '（無題）';
+    try {
+      await addDoc(this.logCollectionRef(scope, uid), {
+        action: 'delete' satisfies TaskActivityAction,
+        taskId: payload.taskId,
+        taskTitle: title,
+        at: serverTimestamp(),
+        actorUserId: uid,
+        actorDisplayName: this.auth.displayName() ?? uid,
+      });
+    } catch (e) {
+      console.error('task activity log (delete) failed:', e);
     }
   }
 }

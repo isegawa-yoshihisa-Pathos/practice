@@ -32,6 +32,7 @@ import {
 import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSelectModule } from '@angular/material/select';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
@@ -57,7 +58,11 @@ import { AuthService } from '../auth.service';
 import { TaskScope, taskDetailScopeParam, taskListViewStorageKey } from '../task-scope';
 import { saveTaskShellScrollPosition } from '../task-shell-scroll';
 import type { ProjectMemberRow } from '../../models/project-member';
-import { TaskCalendar, type TaskCalendarGranularity } from '../task-calendar/task-calendar';
+import {
+  TaskCalendar,
+  type TaskCalendarGranularity,
+  type TaskCalendarWeekdayStart,
+} from '../task-calendar/task-calendar';
 import { UserAvatar } from '../user-avatar/user-avatar';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
@@ -83,6 +88,7 @@ import { taskStatusTransitionPatch } from '../task-firestore-mutation';
     DragDropModule,
     MatButtonModule,
     MatButtonToggleModule,
+    MatTooltipModule,
     MatFormFieldModule,
     MatSelectModule,
     MatRadioModule,
@@ -113,6 +119,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   calendarGranularity: TaskCalendarGranularity = 'month';
   /** カレンダーの基準日（月の表示月・週の週・日のその日） */
   calendarViewDate = new Date();
+  /** 月・週表示の週の左端（日曜 / 月曜） */
+  calendarWeekdayStart: TaskCalendarWeekdayStart = 'Sunday';
 
   tasks: Task[] = [];
 
@@ -363,6 +371,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       viewMode: this.viewMode,
       calendarGranularity: this.calendarGranularity,
       calendarViewDateIso: this.calendarViewDate.toISOString(),
+      calendarWeekdayStart: this.calendarWeekdayStart,
     });
   }
 
@@ -372,12 +381,15 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       this.viewMode = 'list';
       this.calendarGranularity = 'month';
       this.calendarViewDate = new Date();
+      this.calendarWeekdayStart = 'Sunday';
       return;
     }
     this.viewMode = pref.viewMode;
     this.calendarGranularity = pref.calendarGranularity;
     const d = new Date(pref.calendarViewDateIso);
     this.calendarViewDate = Number.isNaN(d.getTime()) ? new Date() : d;
+    this.calendarWeekdayStart =
+      pref.calendarWeekdayStart === 'Monday' ? 'Monday' : 'Sunday';
   }
 
   private persistCurrentViewPrefsToStorage(): void {
@@ -385,11 +397,17 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       viewMode: this.viewMode,
       calendarGranularity: this.calendarGranularity,
       calendarViewDateIso: this.calendarViewDate.toISOString(),
+      calendarWeekdayStart: this.calendarWeekdayStart,
     });
   }
 
   onCalendarViewDateChange(d: Date): void {
     this.calendarViewDate = d;
+    this.onTaskListViewUiChange();
+  }
+
+  onCalendarWeekdayStartChange(v: TaskCalendarWeekdayStart): void {
+    this.calendarWeekdayStart = v;
     this.onTaskListViewUiChange();
   }
 
@@ -1517,18 +1535,25 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     this.openSubtaskDialog(t);
   }
 
-  ctxDeleteTask(): void {
+  async ctxDeleteTask(): Promise<void> {
     const t = this.ctxTask;
     if (!t?.id) {
       return;
     }
+    const id = t.id;
     if (!confirm('このタスクを削除しますか？')) {
       return;
     }
-    void this.deleteTaskCascade(t.id);
+    try {await this.taskActivityLog.logDelete(this.taskScope, {
+          taskId: id,
+          taskTitle: t.title || '（無題）',
+        });
+        await this.deleteTaskCascade(t.id);
+      } catch(err) {
+        console.error('task delete failed:', err)}
   }
 
-  onDeleteTaskFromItem(task: Task): void {
+  async onDeleteTaskFromItem(task: Task): Promise<void> {
     const id = task.id;
     if (!id) {
       return;
@@ -1536,7 +1561,13 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (!confirm('このタスクを削除しますか？')) {
       return;
     }
-    void this.deleteTaskCascade(id);
+    try {await this.taskActivityLog.logDelete(this.taskScope, {
+          taskId: id,
+          taskTitle: task.title || '（無題）',
+        });
+        await this.deleteTaskCascade(id);
+    } catch(err) {
+      console.error('task delete failed:', err)}
   }
 
   private async deleteTaskCascade(rootId: string): Promise<void> {
@@ -1545,6 +1576,10 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       for (const x of this.tasks) {
         if (x.parentTaskId === pid && x.id) {
           toDelete.add(x.id);
+          void this.taskActivityLog.logDelete(this.taskScope, {
+            taskId: x.id,
+            taskTitle: x.title || '（無題）',
+          }).catch((err) => console.error('task delete failed:', err));
           walk(x.id);
         }
       }

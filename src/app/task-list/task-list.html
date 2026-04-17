@@ -478,7 +478,9 @@
       [taskScope]="taskScope"
       [granularity]="calendarGranularity"
       [viewDate]="calendarViewDate"
+      [weekdayStart]="calendarWeekdayStart"
       (viewDateChange)="onCalendarViewDateChange($event)"
+      (weekdayStartChange)="onCalendarWeekdayStartChange($event)"
       (pickCalendarDay)="onPickCalendarDayFromMonth($event)"
       (taskContextMenu)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
     ></app-task-calendar>

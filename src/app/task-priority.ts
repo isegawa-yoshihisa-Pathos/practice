@@ -15,7 +15,7 @@ export function clampTaskPriority(raw: unknown): number {
   if (Number.isNaN(n)) {
     return DEFAULT_TASK_PRIORITY;
   }
-  return Math.min(TASK_PRIORITY_MAX, Math.max(TASK_PRIORITY_MIN, n));
+  return Math.max(TASK_PRIORITY_MIN, Math.min(TASK_PRIORITY_MAX, n));
 }
 
 export function priorityShortLabel(p: number): string {

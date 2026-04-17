@@ -120,7 +120,7 @@ export class TaskReport implements OnInit, OnDestroy {
             const at = timestampLikeToDate(data['at']);
             const raw = data['action'];
             const action: TaskActivityAction =
-              raw === 'create' || raw === 'update' ? raw : 'update';
+              raw === 'create' || raw === 'update' || raw === 'delete' ? raw : 'update';
             const taskTitle =
               typeof data['taskTitle'] === 'string' ? data['taskTitle'] : '';
             const taskId = typeof data['taskId'] === 'string' ? data['taskId'] : '';
@@ -134,7 +134,7 @@ export class TaskReport implements OnInit, OnDestroy {
               id,
               at,
               action,
-              actionLabel: action === 'create' ? '追加' : '編集',
+              actionLabel: action === 'create' ? '追加' : action === 'delete' ? '削除' : '編集',
               actorDisplayName,
               taskTitle: taskTitle || '（無題）',
               taskId,

@@ -1,19 +1,33 @@
 <div class="task-cal">
   <div class="task-cal-toolbar">
     @if (granularity === 'month') {
-      <button mat-stroked-button type="button" (click)="goPrevMonth()" aria-label="前の月">‹</button>
+      <button mat-stroked-button type="button" (click)="goPrevMonth()" matTooltip="前の月" aria-label="前の月">‹</button>
       <span class="task-cal-title">{{ monthTitle }}</span>
-      <button mat-stroked-button type="button" (click)="goNextMonth()" aria-label="次の月">›</button>
+      <button mat-stroked-button type="button" (click)="goNextMonth()" matTooltip="次の月" aria-label="次の月">›</button>
+      <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今月</button>
     } @else if (granularity === 'week') {
-      <button mat-stroked-button type="button" (click)="goPrevWeek()" aria-label="前の週">‹</button>
+      <button mat-stroked-button type="button" (click)="goPrevWeek()" matTooltip="前の週" aria-label="前の週">‹</button>
       <span class="task-cal-title">{{ weekTitleRange }}</span>
-      <button mat-stroked-button type="button" (click)="goNextWeek()" aria-label="次の週">›</button>
+      <button mat-stroked-button type="button" (click)="goNextWeek()" matTooltip="次の週" aria-label="次の週">›</button>
+      <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今週</button>
     } @else {
-      <button mat-stroked-button type="button" (click)="goPrevDay()" aria-label="前の日">‹</button>
+      <button mat-stroked-button type="button" (click)="goPrevDay()" matTooltip="前の日" aria-label="前の日">‹</button>
       <span class="task-cal-title">{{ dayTitle }}</span>
-      <button mat-stroked-button type="button" (click)="goNextDay()" aria-label="次の日">›</button>
+      <button mat-stroked-button type="button" (click)="goNextDay()" matTooltip="次の日" aria-label="次の日">›</button>
+      <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今日</button>
     }
-    <button mat-button type="button" (click)="goToday()">今日</button>
+    @if (granularity === 'month' || granularity === 'week') {
+      <mat-button-toggle-group
+        class="weekday-start-toggle"
+        name="weekdayStart"
+        aria-label="週の始まり"
+        [ngModel]="weekdayStart"
+        (ngModelChange)="weekdayStartChange.emit($event)"
+      >
+        <mat-button-toggle value="Sunday">日曜</mat-button-toggle>
+        <mat-button-toggle value="Monday">月曜</mat-button-toggle>
+      </mat-button-toggle-group>
+    }
   </div>
 
   @if (granularity === 'month') {
@@ -48,90 +62,79 @@
           </div>
           <div class="task-cal-month-task-layer">
             <div class="task-cal-month-layer-date-slot" aria-hidden="true"></div>
-            <div
-              class="task-cal-month-task-body-slot"
-              [class.task-cal-month-task-body-slot--nos]="week.spanStripHeightPx === 0"
-            >
-              @if (week.spanStripHeightPx > 0) {
-                <div
-                  class="task-cal-month-span-strip"
-                  [style.height.px]="week.spanStripHeightPx"
-                  [style.marginBottom.px]="week.spanGapAfterPx"
-                >
-                  <div
-                    class="task-cal-month-span-grid"
-                    [style.gridTemplateRows]="week.spanGridTemplateRows"
-                  >
-                    @for (seg of week.spanSegments; track seg.trackId) {
-                      <button
-                        type="button"
-                        class="task-cal-span-chip"
-                        [style.gridColumn]="seg.gridColumn"
-                        [style.gridRow]="seg.lane + 1"
-                        [style.--label-color]="labelColor(seg.task)"
-                        [attr.aria-label]="seg.task.title"
-                        (click)="$event.stopPropagation(); openTask(seg.task)"
-                        (contextmenu)="onTaskChipContextMenu($event, seg.task)"
-                      >
-                        <span
-                          class="task-cal-label-strip"
-                          [style.background-color]="labelColor(seg.task)"
-                          aria-hidden="true"
-                        ></span>
-                        <span
-                          class="task-cal-span-chip-main"
-                          [class.done]="seg.task.status === 'done'"
-                          [class.in-progress]="seg.task.status === 'in_progress'"
-                        >
-                          <span
-                            class="task-cal-span-chip-title"
-                            [class.task-cal-title-done]="seg.task.status === 'done'"
-                            >{{ seg.task.title }}</span>
-                        </span>
-                      </button>
-                    }
-                  </div>
-                </div>
-              }
-              <div class="task-cal-month-col-chips-wrap">
-              @for (cell of week.cells; track cell.date.getTime()) {
-                <div class="task-cal-month-col-chips">
-                  @for (task of cell.items; track task.id ?? task.title) {
+            <div class="task-cal-month-task-body-slot">
+              <div class="task-cal-month-week-body">
+                <div class="task-cal-month-week-grid" role="presentation">
+                  @for (rc of week.rangeChips; track rc.trackId) {
                     <button
                       type="button"
-                      class="task-cal-chip task-cal-chip--month"
-                      [style.--label-color]="labelColor(task)"
-                      (click)="$event.stopPropagation(); openTask(task)"
-                      (contextmenu)="onTaskChipContextMenu($event, task)"
+                      class="task-cal-chip task-cal-chip--month task-cal-chip--month-range"
+                      [style.gridColumn]="rc.gridColumn"
+                      [style.gridRow]="rc.lane + 1"
+                      [style.--label-color]="labelColor(rc.task)"
+                      [attr.aria-label]="rc.task.title"
+                      (click)="$event.stopPropagation(); openTask(rc.task)"
+                      (contextmenu)="onTaskChipContextMenu($event, rc.task)"
                     >
                       <span
                         class="task-cal-label-strip"
-                        [style.background-color]="labelColor(task)"
+                        [style.background-color]="labelColor(rc.task)"
                         aria-hidden="true"
                       ></span>
                       <span
                         class="task-cal-chip-main"
-                        [class.done]="task.status === 'done'"
-                        [class.in-progress]="task.status === 'in_progress'"
+                        [class.done]="rc.task.status === 'done'"
+                        [class.in-progress]="rc.task.status === 'in_progress'"
                       >
                         <span
                           class="task-cal-chip-title"
-                          [class.task-cal-title-done]="task.status === 'done'"
-                          >{{ task.title }}</span>
+                          [class.task-cal-title-done]="rc.task.status === 'done'"
+                          >{{ rc.task.title }}</span>
                       </span>
                     </button>
                   }
-                  <div
-                    class="task-cal-overflow"
-                    [class.is-empty]="cell.overflow === 0"
-                    [attr.aria-hidden]="cell.overflow === 0 ? 'true' : null"
-                  >
-                    @if (cell.overflow > 0) {
-                      他{{ cell.overflow }}件
-                    }
-                  </div>
+                  @for (dc of week.dayChips; track dc.trackId) {
+                    <button
+                      type="button"
+                      class="task-cal-chip task-cal-chip--month"
+                      [style.gridColumn]="dc.col + 1"
+                      [style.gridRow]="dc.row + 1"
+                      [style.--label-color]="labelColor(dc.task)"
+                      [attr.aria-label]="dc.task.title"
+                      (click)="$event.stopPropagation(); openTask(dc.task)"
+                      (contextmenu)="onTaskChipContextMenu($event, dc.task)"
+                    >
+                      <span
+                        class="task-cal-label-strip"
+                        [style.background-color]="labelColor(dc.task)"
+                        aria-hidden="true"
+                      ></span>
+                      <span
+                        class="task-cal-chip-main"
+                        [class.done]="dc.task.status === 'done'"
+                        [class.in-progress]="dc.task.status === 'in_progress'"
+                      >
+                        <span
+                          class="task-cal-chip-title"
+                          [class.task-cal-title-done]="dc.task.status === 'done'"
+                          >{{ dc.task.title }}</span>
+                      </span>
+                    </button>
+                  }
                 </div>
-              }
+                <div class="task-cal-month-overflow-row" role="presentation">
+                  @for (cell of week.cells; track cell.date.getTime()) {
+                    <div
+                      class="task-cal-overflow"
+                      [class.is-empty]="cell.overflow === 0"
+                      [attr.aria-hidden]="cell.overflow === 0 ? 'true' : null"
+                    >
+                      @if (cell.overflow > 0) {
+                        他{{ cell.overflow }}件
+                      }
+                    </div>
+                  }
+                </div>
               </div>
             </div>
           </div>
@@ -155,7 +158,7 @@
           <div class="task-cal-week-h-side" [class.is-today]="isToday(row.date)">
             <div class="task-cal-week-h-side-label">
               <span class="task-cal-week-h-dmd">{{ row.date.getMonth() + 1 }}/{{ row.date.getDate() }}</span>
-              <span class="task-cal-week-h-dow">{{ weekdayLabels[row.date.getDay()] }}</span>
+              <span class="task-cal-week-h-dow">{{ weekdayLabelForDate(row.date) }}</span>
             </div>
           </div>
           <div

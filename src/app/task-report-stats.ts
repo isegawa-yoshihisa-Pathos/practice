@@ -51,7 +51,7 @@ export function countCompletedInLastDays(tasks: Task[], now: Date, days: number)
 }
 
 /**
- * 直近7日間に更新されたタスク（新規作成直後とみなす幅2秒は除外）
+ * 直近7日間に更新されたタスク（新規作成直後2秒間は除外）
  */
 export function countUpdatedInLastDays(tasks: Task[], now: Date, days: number): number {
   const since = rollingSince(now, days);
@@ -62,7 +62,7 @@ export function countUpdatedInLastDays(tasks: Task[], now: Date, days: number): 
       continue;
     }
     const c = t.createdAt;
-    if (c && u.getTime() - c.getTime() <= 2000) {
+    if (c && u.getTime() - c.getTime() <=2000) {
       continue;
     }
     n++;

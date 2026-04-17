@@ -1,7 +1,10 @@
 import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
+import { MatTooltipModule } from '@angular/material/tooltip';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { Task } from '../../models/task';
 import { TaskScope, taskDetailScopeParam } from '../task-scope';
 import { clampTaskPriority } from '../task-priority';
@@ -54,18 +57,21 @@ export interface DayTimelineBlock {
 /** カレンダー粒度（TaskList の `calendarGranularity` と共有） */
 export type TaskCalendarGranularity = 'month' | 'week' | 'day';
 
-/** 月表示：日セル用（チップは {@link MonthWeekRow} のオーバーレイに描画） */
+/** 週の左端（月グリッド・週タイムラインの列順） */
+export type TaskCalendarWeekdayStart = 'Sunday' | 'Monday';
+
+/** 月表示：日セル用（オーバーレイは {@link MonthWeekRow} の週グリッド） */
 export interface MonthWeekCellModel {
   date: Date;
   inMonth: boolean;
-  /** 複数日ウィンドウを除く。表示枠は週のスパン行数に応じて `5 - スパン行` まで */
-  items: Task[];
+  /** 単日タスクのうち 5 行グリッドに載せきれない件数 */
   overflow: number;
 }
 
-/** 月表示：週内の複数日ウィンドウの 1 セグメント（オーバーレイ） */
-export interface MonthWeekSpanSegment {
+/** 月表示：複数日ウィンドウを週グリッドの 1 行にまたがって表示するチップ */
+export interface MonthWeekGridRangeChip {
   task: Task;
+  /** 週内列 0〜6 に対応するグリッド行（0 ＝ 上段） */
   lane: number;
   colStart: number;
   colEnd: number;
@@ -73,16 +79,19 @@ export interface MonthWeekSpanSegment {
   trackId: string;
 }
 
-/** 月表示：1 週（グリッドセル＋タスクオーバーレイ） */
+/** 月表示：単日タスクのグリッド配置（列・行は 0 始まり） */
+export interface MonthWeekGridDayChip {
+  task: Task;
+  col: number;
+  row: number;
+  trackId: string;
+}
+
+/** 月表示：1 週（5 行×7 列のタスクグリッド＋日付行は別レイヤ） */
 export interface MonthWeekRow {
   cells: MonthWeekCellModel[];
-  spanSegments: MonthWeekSpanSegment[];
-  /** スパンに使った行数（最大 {@link CALENDAR_MONTH_MAX_PER_DAY}） */
-  spanRowCount: number;
-  spanStripHeightPx: number;
-  /** スパンと列チップのあいだの隙間（px） */
-  spanGapAfterPx: number;
-  spanGridTemplateRows: string;
+  rangeChips: MonthWeekGridRangeChip[];
+  dayChips: MonthWeekGridDayChip[];
   trackKey: number;
 }
 
@@ -251,13 +260,19 @@ function assignLanesInOverlapGroup(
   return out;
 }
 
-/** 月グリッド用：含まれる月の viewMonth の週（日曜始まり）×7日 */
-function buildMonthWeeks(viewMonth: Date): Date[][] {
+/** 月グリッド用：含まれる月の週×7日（`weekStartsMonday` で左端を月曜 or 日曜に） */
+function buildMonthWeeks(viewMonth: Date, weekStartsMonday: boolean): Date[][] {
   const y = viewMonth.getFullYear();
   const m = viewMonth.getMonth();
   const first = new Date(y, m, 1);
   const start = new Date(first);
-  start.setDate(first.getDate() - first.getDay());
+  const dow = first.getDay();
+  if (weekStartsMonday) {
+    const offset = dow === 0 ? 6 : dow - 1;
+    start.setDate(first.getDate() - offset);
+  } else {
+    start.setDate(first.getDate() - dow);
+  }
   const weeks: Date[][] = [];
   const cur = new Date(start);
   for (let w = 0; w < 6; w++) {
@@ -271,16 +286,23 @@ function buildMonthWeeks(viewMonth: Date): Date[][] {
   return weeks;
 }
 
-function startOfWeekSunday(d: Date): Date {
-  const x = startOfDay(d);
-  x.setDate(x.getDate() - x.getDay());
+/** ローカル日 `d` が属する週の開始日（時刻 0:00） */
+function startOfCalendarWeek(d: Date, weekStartsMonday: boolean): Date {
+  const x = startOfDay(new Date(d));
+  const day = x.getDay();
+  if (weekStartsMonday) {
+    const offset = day === 0 ? 6 : day - 1;
+    x.setDate(x.getDate() - offset);
+  } else {
+    x.setDate(x.getDate() - day);
+  }
   return x;
 }
 
 @Component({
   selector: 'app-task-calendar',
   standalone: true,
-  imports: [CommonModule, MatButtonModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatTooltipModule, MatButtonToggleModule],
   templateUrl: './task-calendar.html',
   styleUrl: './task-calendar.css',
 })
@@ -290,6 +312,10 @@ export class TaskCalendar {
   @Input({ required: true }) tasks: Task[] = [];
   @Input({ required: true }) taskScope!: TaskScope;
   @Input() granularity: TaskCalendarGranularity = 'month';
+
+  /** 週の左端（親の localStorage と同期） */
+  @Input() weekdayStart: TaskCalendarWeekdayStart = 'Sunday';
+  @Output() weekdayStartChange = new EventEmitter<TaskCalendarWeekdayStart>();
 
   /** 親（TaskList）と同期するナビ基準日 */
   private _viewDate = new Date();
@@ -343,7 +369,24 @@ export class TaskCalendar {
     return out;
   }
 
-  readonly weekdayLabels = ['日', '月', '火', '水', '木', '金', '土'];
+  get weekStartsMonday(): boolean {
+    return this.weekdayStart === 'Monday';
+  }
+
+  /** 列ヘッダー順（左から）：日曜始まりなら日…土、月曜始まりなら月…日 */
+  get weekdayLabels(): string[] {
+    return this.weekStartsMonday
+      ? ['月', '火', '水', '木', '金', '土', '日']
+      : ['日', '月', '火', '水', '木', '金', '土'];
+  }
+
+  /**
+   * `weekdayLabels` の列インデックス（0〜6）を返す。`d` の曜日（getDay）と表示列を対応させる。
+   */
+  weekdayLabelForDate(d: Date): string {
+    const i = this.weekStartsMonday ? (d.getDay() + 6) % 7 : d.getDay();
+    return this.weekdayLabels[i];
+  }
 
   openTask(task: Task): void {
     const id = task.id;
@@ -426,7 +469,7 @@ export class TaskCalendar {
   }
 
   get weekTitleRange(): string {
-    const start = startOfWeekSunday(this.viewDate);
+    const start = startOfCalendarWeek(this.viewDate, this.weekStartsMonday);
     const end = new Date(start);
     end.setDate(end.getDate() + 6);
     const y1 = start.getFullYear();
@@ -442,7 +485,7 @@ export class TaskCalendar {
 
   get dayTitle(): string {
     const d = this.viewDate;
-    return `${d.getFullYear()}年 ${d.getMonth() + 1}月 ${d.getDate()}日（${this.weekdayLabels[d.getDay()]}）`;
+    return `${d.getFullYear()}年 ${d.getMonth() + 1}月 ${d.getDate()}日（${this.weekdayLabelForDate(d)}）`;
   }
 
   /** 一日表示：その日のタスク（優先度→タイトル、件数上限あり） */
@@ -546,7 +589,7 @@ export class TaskCalendar {
     nowLineLeftPct: number | null;
     deadlineLines: { task: Task; leftPct: number; timeLabel: string }[];
   }> {
-    const start = startOfWeekSunday(this.viewDate);
+    const start = startOfCalendarWeek(this.viewDate, this.weekStartsMonday);
     const rows: Array<{
       date: Date;
       blocks: DayTimelineBlock[];
@@ -674,18 +717,16 @@ export class TaskCalendar {
   }
 
   /**
-   * 月表示：日セルは日付のみ（チップはオーバーレイ）。
-   * タスク表示の縦 5 行は「スパン行」と「単日チップ行」の合算（スパンが k 行なら単日は最大 5-k 行）。
+   * 月表示：週を 5 行×7 列の CSS Grid で表現する。
+   * 複数日ウィンドウは複数列にまたがる 1 チップ、単日はその日の列で複数日に使われていない行に積む。
    */
   get monthWeekRows(): MonthWeekRow[] {
     const vm = new Date(this.viewDate.getFullYear(), this.viewDate.getMonth(), 1);
-    const weeks = buildMonthWeeks(vm);
+    const weeks = buildMonthWeeks(vm, this.weekStartsMonday);
     const byDay = this.tasksByDayKey();
     const ym = vm.getMonth();
-    const multiDayTasks = this.tasks.filter(isMultiDayWindowTask);
-    const barH = CALENDAR_MONTH_TASK_CHIP_H_PX;
-    const barGap = CALENDAR_MONTH_TASK_GAP_PX;
     const maxRows = this.maxMonth;
+    const multiDayTasks = this.tasks.filter(isMultiDayWindowTask);
 
     return weeks.map((weekDates, weekIndex) => {
       const segmentsRaw: { task: Task; colStart: number; colEnd: number }[] = [];
@@ -727,7 +768,7 @@ export class TaskCalendar {
       });
 
       const occupied: { colStart: number; colEnd: number }[][] = [];
-      const spanSegments: MonthWeekSpanSegment[] = [];
+      const rangeChips: MonthWeekGridRangeChip[] = [];
       for (const raw of segmentsRaw) {
         let placed = false;
         for (let lane = 0; lane < maxRows; lane++) {
@@ -740,7 +781,7 @@ export class TaskCalendar {
               occupied[lane] = [];
             }
             occupied[lane].push({ colStart: raw.colStart, colEnd: raw.colEnd });
-            spanSegments.push({
+            rangeChips.push({
               task: raw.task,
               lane,
               colStart: raw.colStart,
@@ -753,39 +794,47 @@ export class TaskCalendar {
           }
         }
         if (!placed) {
-          /* 5 行に収まらないスパンは表示しない（稀な重なり過ぎ） */
+          /* 5 行に収まらない複数日帯は表示しない */
         }
       }
 
-      const spanRowCount =
-        spanSegments.length === 0
-          ? 0
-          : Math.min(Math.max(...spanSegments.map((s) => s.lane)) + 1, maxRows);
-      const singleDaySlots = Math.max(0, maxRows - spanRowCount);
-      const spanStripHeightPx =
-        spanRowCount === 0 ? 0 : spanRowCount * barH + (spanRowCount - 1) * barGap;
-      const spanGapAfterPx = spanRowCount > 0 && spanRowCount < maxRows ? barGap : 0;
-      const spanGridTemplateRows =
-        spanRowCount === 0 ? 'none' : `repeat(${spanRowCount}, ${barH}px)`;
+      const dayChips: MonthWeekGridDayChip[] = [];
+      const cells: MonthWeekCellModel[] = [];
 
-      const cells: MonthWeekCellModel[] = weekDates.map((date) => {
+      for (let col = 0; col < 7; col++) {
+        const date = weekDates[col];
         const inMonth = date.getMonth() === ym;
         const key = dayKey(date);
         const all = byDay.get(key) ?? [];
         const sorted = [...all].sort(compareTasksInCalendarCell);
-        const chipCandidates = sorted.filter((t) => !isMultiDayWindowTask(t));
-        const items = chipCandidates.slice(0, singleDaySlots);
-        const overflow = Math.max(0, chipCandidates.length - singleDaySlots);
-        return { date, inMonth, items, overflow };
-      });
+
+        const occupiedLanes = new Set<number>();
+        for (const rc of rangeChips) {
+          if (rc.colStart <= col && col <= rc.colEnd) {
+            occupiedLanes.add(rc.lane);
+          }
+        }
+        const freeRows = [0, 1, 2, 3, 4].filter((r) => !occupiedLanes.has(r));
+        const singleDay = sorted.filter((t) => !isMultiDayWindowTask(t));
+        const nShow = Math.min(freeRows.length, singleDay.length);
+        for (let i = 0; i < nShow; i++) {
+          const t = singleDay[i];
+          const row = freeRows[i];
+          dayChips.push({
+            task: t,
+            col,
+            row,
+            trackId: `d${weekIndex}-${col}-r${row}-${t.id ?? t.title}`,
+          });
+        }
+        const overflow = Math.max(0, singleDay.length - nShow);
+        cells.push({ date, inMonth, overflow });
+      }
 
       return {
         cells,
-        spanSegments,
-        spanRowCount,
-        spanStripHeightPx,
-        spanGapAfterPx,
-        spanGridTemplateRows,
+        rangeChips,
+        dayChips,
         trackKey: startOfDay(weekDates[0]).getTime(),
       };
     });
