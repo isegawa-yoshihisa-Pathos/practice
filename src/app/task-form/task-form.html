@@ -9,6 +9,7 @@
         name="title"
         required
         autofocus
+        (keydown.enter)="onTitleKeydownEnter($event)"
       />
     </mat-form-field>
     @if (taskScope.kind === 'project') {

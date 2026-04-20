@@ -12,10 +12,26 @@
 }
 
 .task-cal-title {
+  position: relative;
+  display: inline-block;
   font-size: 16px;
   font-weight: 600;
   min-width: 140px;
   text-align: center;
+  cursor: pointer;
+}
+
+.task-cal-title-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  opacity: 0;
+  pointer-events: none;
+  box-sizing: border-box;
 }
 
 .task-cal-today-button {
@@ -25,7 +41,7 @@
 .weekday-start-toggle {
   flex: 0 0 auto;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .task-cal-month-wrap {
@@ -283,7 +299,8 @@
   border-left: none;
 }
 
-.task-cal-h-timeline-track {
+.task-cal-h-timeline-track,
+.task-cal-h-timeline-track-week {
   position: relative;
   min-width: 520px;
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -292,8 +309,19 @@
   box-sizing: border-box;
 }
 
-.task-cal-h-timeline-track.is-today {
+.task-cal-h-timeline-track.is-today,
+.task-cal-h-timeline-track-week.is-today {
   box-shadow: inset 0 0 0 1px rgba(25, 118, 210, 0.35);
+}
+
+.task-cal-h-timeline-track-week:hover {
+  background: rgba(25, 118, 210, 0.06);
+  cursor: pointer;
+}
+
+.task-cal-h-timeline-track-week:focus-visible {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
 }
 
 .task-cal-h-grid-bg {
@@ -482,6 +510,7 @@
   justify-content: flex-end;
   padding: 6px 6px 6px 0;
   text-align: right;
+  cursor: pointer;
 }
 
 .task-cal-week-h-side-label {
@@ -508,7 +537,17 @@
 }
 
 .task-cal-week-h-side.is-today {
+  box-shadow: inset 0 0 0 1px rgba(25, 118, 210, 0.35);
+}
+
+.task-cal-week-h-side:focus-visible {
+  outline: 2px solid #1976d2;
+  outline-offset: 1px;
+}
+
+.task-cal-week-h-side:hover {
   background: rgba(25, 118, 210, 0.06);
+  cursor: pointer;
 }
 
 /* リスト行（task-list-item）と同じ：左ラベル帯 + color-mix 背景 */

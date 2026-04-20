@@ -151,6 +151,17 @@ export class TaskForm implements OnInit, OnChanges {
     }
   }
 
+  onTitleKeydownEnter(event: Event): void {
+    if (!(event instanceof KeyboardEvent)) {
+      return;
+    }
+    if (event.isComposing) {
+      return;
+    }
+    event.preventDefault();
+    this.submit();
+  }
+
   submit(): void {
     if (!this.canSubmit()) {
       return;

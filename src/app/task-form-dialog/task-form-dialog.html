@@ -18,6 +18,8 @@
     color="primary"
     type="button"
     (click)="taskForm.submit()"
+    (keydown.enter)="taskForm.submit()"
+    (keydown.space)="$event.preventDefault(); taskForm.submit()"
     [disabled]="!taskForm.canSubmit()"
   >
     追加

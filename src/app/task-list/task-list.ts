@@ -793,11 +793,6 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     this.expandedSubtaskParentIds = next;
   }
 
-  /**
-   * 複数選択時: 元の順で非選択を rest にしたあと、ドロップ位置 cur に対応する rest 内の挿入位置。
-   * 元配列の先頭から、ドロップ位置に対応する区間までに含まれる「非選択」の個数（= rest 内の挿入位置）。
-   * 末尾へドロップするとき CDK が currentIndex = length-1 とすることが多いため、区間は cur+1 まで含める。
-   */
   private insertionIndexInRestForMulti(
     length: number,
     selectedIndices: ReadonlySet<number>,

@@ -2,17 +2,41 @@
   <div class="task-cal-toolbar">
     @if (granularity === 'month') {
       <button mat-stroked-button type="button" (click)="goPrevMonth()" matTooltip="前の月" aria-label="前の月">‹</button>
-      <span class="task-cal-title">{{ monthTitle }}</span>
+      <span class="task-cal-title" role="button" (click)="datePicker.open()" aria-label="日付を変更" matTooltip="日付を変更">
+        <input
+          matInput
+          class="task-cal-title-input"
+          [matDatepicker]="datePicker"
+          [value]="viewDate"
+          (dateChange)="viewDateChange.emit($event.value)"
+        />
+        <mat-datepicker #datePicker yPosition="above" />{{ monthTitle }}</span>
       <button mat-stroked-button type="button" (click)="goNextMonth()" matTooltip="次の月" aria-label="次の月">›</button>
       <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今月</button>
     } @else if (granularity === 'week') {
       <button mat-stroked-button type="button" (click)="goPrevWeek()" matTooltip="前の週" aria-label="前の週">‹</button>
-      <span class="task-cal-title">{{ weekTitleRange }}</span>
+      <span class="task-cal-title" role="button" (click)="datePicker.open()" aria-label="日付を変更" matTooltip="日付を変更">
+        <input
+          matInput
+          class="task-cal-title-input"
+          [matDatepicker]="datePicker"
+          [value]="viewDate"
+          (dateChange)="viewDateChange.emit($event.value)"
+        />
+        <mat-datepicker #datePicker yPosition="below" />{{ weekTitleRange }}</span>
       <button mat-stroked-button type="button" (click)="goNextWeek()" matTooltip="次の週" aria-label="次の週">›</button>
       <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今週</button>
     } @else {
       <button mat-stroked-button type="button" (click)="goPrevDay()" matTooltip="前の日" aria-label="前の日">‹</button>
-      <span class="task-cal-title">{{ dayTitle }}</span>
+      <span class="task-cal-title" role="button" (click)="datePicker.open()" aria-label="日付を変更" matTooltip="日付を変更">
+        <input
+          matInput
+          class="task-cal-title-input"
+          [matDatepicker]="datePicker"
+          [value]="viewDate"
+          (dateChange)="viewDateChange.emit($event.value)"
+        />
+        <mat-datepicker #datePicker yPosition="below" />{{ dayTitle }}</span>
       <button mat-stroked-button type="button" (click)="goNextDay()" matTooltip="次の日" aria-label="次の日">›</button>
       <button mat-stroked-button type="button" class="task-cal-today-button" (click)="goToday()">今日</button>
     }
@@ -24,8 +48,8 @@
         [ngModel]="weekdayStart"
         (ngModelChange)="weekdayStartChange.emit($event)"
       >
-        <mat-button-toggle value="Sunday">日曜</mat-button-toggle>
-        <mat-button-toggle value="Monday">月曜</mat-button-toggle>
+        <mat-button-toggle value="Sunday">日曜日</mat-button-toggle>
+        <mat-button-toggle value="Monday">月曜日</mat-button-toggle>
       </mat-button-toggle-group>
     }
   </div>
@@ -155,16 +179,27 @@
           }
         </div>
         @for (row of weekTimelineRows; track row.date.getTime()) {
-          <div class="task-cal-week-h-side" [class.is-today]="isToday(row.date)">
+          <div class="task-cal-week-h-side" 
+            [class.is-today]="isToday(row.date)"
+            role="button"
+            tabindex="0"
+            (click)="pickWeekDay(row.date)"
+            (keydown.enter)="pickWeekDay(row.date)"
+            (keydown.space)="$event.preventDefault(); pickWeekDay(row.date)"
+          >
             <div class="task-cal-week-h-side-label">
               <span class="task-cal-week-h-dmd">{{ row.date.getMonth() + 1 }}/{{ row.date.getDate() }}</span>
               <span class="task-cal-week-h-dow">{{ weekdayLabelForDate(row.date) }}</span>
             </div>
           </div>
           <div
-            class="task-cal-h-timeline-track"
+            class="task-cal-h-timeline-track-week"
             [style.height.px]="row.trackHeightPx"
             [class.is-today]="isToday(row.date)"
+            role="button"
+            (click)="pickWeekDay(row.date)"
+            (keydown.enter)="pickWeekDay(row.date)"
+            (keydown.space)="$event.preventDefault(); pickWeekDay(row.date)"
           >
             <div class="task-cal-h-grid-bg" aria-hidden="true"></div>
             <div class="task-cal-h-markers-layer">

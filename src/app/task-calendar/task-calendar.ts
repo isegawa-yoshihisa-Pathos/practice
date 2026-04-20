@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { MatDatepickerModule } from '@angular/material/datepicker';
 import { Task } from '../../models/task';
 import { TaskScope, taskDetailScopeParam } from '../task-scope';
 import { clampTaskPriority } from '../task-priority';
@@ -302,7 +303,7 @@ function startOfCalendarWeek(d: Date, weekStartsMonday: boolean): Date {
 @Component({
   selector: 'app-task-calendar',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatTooltipModule, MatButtonToggleModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatTooltipModule, MatButtonToggleModule, MatDatepickerModule],
   templateUrl: './task-calendar.html',
   styleUrl: './task-calendar.css',
 })
@@ -336,13 +337,13 @@ export class TaskCalendar {
     return this._viewDate;
   }
 
-  /** ツールバー等で日付が変わったとき（親が URL などと同期する） */
+  /** ツールバー等で日付が変わったとき */
   @Output() viewDateChange = new EventEmitter<Date>();
 
-  /** 月グリッドの日付をクリックしたとき（親は日表示へ切り替え） */
+  /** 月グリッドの日付をクリックしたとき */
   @Output() pickCalendarDay = new EventEmitter<Date>();
 
-  /** チップ／ブロック上の右クリック（親がコンテキストメニューを開く） */
+  /** チップ／ブロック上の右クリック */
   @Output() taskContextMenu = new EventEmitter<{
     clientX: number;
     clientY: number;
@@ -443,6 +444,13 @@ export class TaskCalendar {
     const x = new Date(this._viewDate);
     x.setDate(x.getDate() + 1);
     this.emitViewDate(x);
+  }
+
+  /** 週表示：日付セルをクリック → その日の日表示へ（親が粒度を切り替え） */
+  pickWeekDay(date: Date): void {
+    const d = startOfDay(new Date(date));
+    this._viewDate = d;
+    this.pickCalendarDay.emit(new Date(d.getTime()));
   }
 
   /** 月表示：日付セルをクリック → その日の日表示へ（親が粒度を切り替え） */
