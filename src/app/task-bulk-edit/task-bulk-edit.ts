@@ -44,6 +44,7 @@ import type { ProjectMemberRow } from '../../models/project-member';
 import { UserAvatar } from '../user-avatar/user-avatar';
 import { TaskActivityLogService } from '../task-activity-log.service';
 import { taskStatusTransitionPatch } from '../task-firestore-mutation';
+import { TaskCollectionReferenceService } from '../task-collection-reference.service';
 import {
   TASK_HOUR_OPTIONS,
   TASK_MINUTE_OPTIONS,
@@ -86,7 +87,7 @@ export class TaskBulkEdit implements OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly projectSession = inject(ProjectSessionService);
   private readonly taskActivityLog = inject(TaskActivityLogService);
-
+  private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
   readonly assigneeNone = '';
   readonly colorChart = TASK_COLOR_CHART;
   readonly priorityOptions = TASK_PRIORITY_OPTIONS;
@@ -181,28 +182,6 @@ export class TaskBulkEdit implements OnInit {
       return null;
     }
     return this.projectMembers.find((m) => m.userId === id) ?? null;
-  }
-
-  private tasksCollectionRef() {
-    const userId = this.auth.userId();
-    if (!userId) {
-      return null;
-    }
-    if (this.scopeParam === 'private') {
-      return collection(this.firestore, 'accounts', userId, 'tasks');
-    }
-    if (this.scopeParam.startsWith('pl-')) {
-      const listId = this.scopeParam.slice(3);
-      return collection(
-        this.firestore,
-        'accounts',
-        userId,
-        'privateTaskLists',
-        listId,
-        'tasks',
-      );
-    }
-    return collection(this.firestore, 'projects', this.scopeParam, 'tasks');
   }
 
   private taskDocRef(taskId: string) {
@@ -301,7 +280,7 @@ export class TaskBulkEdit implements OnInit {
       this.endHour = eh.hour;
       this.endMinute = eh.minute;
       this.deadlineDate = null;
-      this.deadlineHour = 9;
+      this.deadlineHour = 0;
       this.deadlineMinute = 0;
     } else if (m === 'deadline' && first.deadline) {
       this.scheduleEditMode = 'deadline';
@@ -311,21 +290,21 @@ export class TaskBulkEdit implements OnInit {
       this.deadlineHour = hm.hour;
       this.deadlineMinute = hm.minute;
       this.startDate = null;
-      this.startHour = 9;
+      this.startHour = 0;
       this.startMinute = 0;
       this.endDate = null;
-      this.endHour = 9;
+      this.endHour = 1;
       this.endMinute = 0;
     } else {
       this.scheduleEditMode = 'none';
       this.deadlineDate = null;
-      this.deadlineHour = 9;
+      this.deadlineHour = 0;
       this.deadlineMinute = 0;
       this.startDate = null;
-      this.startHour = 9;
+      this.startHour = 0;
       this.startMinute = 0;
       this.endDate = null;
-      this.endHour = 9;
+      this.endHour = 1;
       this.endMinute = 0;
     }
     this.scheduleBulkMode = 'unchanged';
@@ -556,7 +535,7 @@ export class TaskBulkEdit implements OnInit {
    * `getDocs` 1 回のスナップショットから `id → title` を構築するため、子タスクもタイトルが取れる。
    */
   private async expandDeleteCascadeEntries(rootIds: string[]): Promise<DeleteCascadeEntry[]> {
-    const col = this.tasksCollectionRef();
+    const col = this.taskCollectionRef.tasksCollectionRef(this.auth.userId(), taskScopeFromDetailRouteParam(this.scopeParam));
     if (!col) {
       const byLoaded = new Map(
         this.loadedTasks

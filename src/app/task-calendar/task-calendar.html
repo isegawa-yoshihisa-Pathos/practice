@@ -75,6 +75,7 @@
                 (click)="pickMonthDay(cell.date)"
                 (keydown.enter)="pickMonthDay(cell.date)"
                 (keydown.space)="$event.preventDefault(); pickMonthDay(cell.date)"
+                (contextmenu)="onDayContextMenu($event, cell.date)"
               >
                 <div class="task-cal-day-num">{{ cell.date.getDate() }}</div>
                 <div
@@ -186,6 +187,7 @@
             (click)="pickWeekDay(row.date)"
             (keydown.enter)="pickWeekDay(row.date)"
             (keydown.space)="$event.preventDefault(); pickWeekDay(row.date)"
+            (contextmenu)="onDayContextMenu($event, row.date)"
           >
             <div class="task-cal-week-h-side-label">
               <span class="task-cal-week-h-dmd">{{ row.date.getMonth() + 1 }}/{{ row.date.getDate() }}</span>
@@ -194,12 +196,13 @@
           </div>
           <div
             class="task-cal-h-timeline-track-week"
-            [style.height.px]="row.trackHeightPx"
+            [style.height.px]="row.trackHeightPx+10"
             [class.is-today]="isToday(row.date)"
             role="button"
             (click)="pickWeekDay(row.date)"
             (keydown.enter)="pickWeekDay(row.date)"
             (keydown.space)="$event.preventDefault(); pickWeekDay(row.date)"
+            (contextmenu)="onDayContextMenu($event, row.date)"
           >
             <div class="task-cal-h-grid-bg" aria-hidden="true"></div>
             <div class="task-cal-h-markers-layer">
@@ -209,9 +212,10 @@
                   class="task-cal-h-deadline-line"
                   [style.left.%]="dl.leftPct"
                   [style.--line-color]="labelColor(dl.task)"
-                  [attr.title]="dl.timeLabel + ' ' + dl.task.title"
+                  [matTooltip]="'締切：' + dl.timeLabel + '\n' + dl.task.title"
+                  matTooltipClass="custom-tooltip"
                   [attr.aria-label]="'締切 ' + dl.timeLabel + ' ' + dl.task.title"
-                  (click)="openTask(dl.task)"
+                  (click)="$event.stopPropagation(); openTask(dl.task)"
                   (contextmenu)="onTaskChipContextMenu($event, dl.task)"
                 ></button>
               }
@@ -227,9 +231,9 @@
                   [style.--label-color]="labelColor(b.task)"
                   [style.left.%]="b.leftPct"
                   [style.width.%]="b.widthPct"
-                  [style.top.px]="b.laneIndex * timelineLaneHeightPx"
+                  [style.top.px]="b.laneIndex * timelineLaneHeightPx + 5"
                   [style.height.px]="timelineLaneHeightPx - 3"
-                  (click)="openTask(b.task)"
+                  (click)="$event.stopPropagation(); openTask(b.task)"
                   (contextmenu)="onTaskChipContextMenu($event, b.task)"
                 >
                   <span
@@ -270,6 +274,7 @@
         <div
           class="task-cal-h-timeline-track"
           [style.height.px]="dayTimeline.trackHeightPx"
+          (contextmenu)="onDayContextMenu($event, viewDate)"
           [class.is-today]="isToday(viewDate)"
         >
           <div class="task-cal-h-grid-bg" aria-hidden="true"></div>
@@ -280,7 +285,8 @@
                 class="task-cal-h-deadline-line"
                 [style.left.%]="dl.leftPct"
                 [style.--line-color]="labelColor(dl.task)"
-                [attr.title]="dl.timeLabel + ' ' + dl.task.title"
+                [matTooltip]="'締切：' + dl.timeLabel + '\n' + dl.task.title"
+                matTooltipClass="custom-tooltip"
                 [attr.aria-label]="'締切 ' + dl.timeLabel + ' ' + dl.task.title"
                 (click)="openTask(dl.task)"
                 (contextmenu)="onTaskChipContextMenu($event, dl.task)"

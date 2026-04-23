@@ -16,10 +16,6 @@ import { MatButtonModule } from '@angular/material/button';
 import { AuthService } from '../auth.service';
 import { TaskScope, taskScopeFromDetailRouteParam } from '../task-scope';
 import { Task } from '../../models/task';
-import {
-  normalizeTaskStatusFromDoc,
-} from '../../models/task-status';
-import { clampTaskPriority } from '../task-priority';
 import { timestampLikeToDate } from '../task-schedule';
 import { TASK_STATUS_OPTIONS } from '../../models/task-status';
 import {
@@ -31,6 +27,8 @@ import {
   pieGradientFromBreakdown,
 } from '../task-report-stats';
 import type { TaskActivityAction } from '../task-activity-log.service';
+import { mapFirestoreDocToTask } from '../task-firestore-mutation';
+import { TaskCollectionReferenceService } from '../task-collection-reference.service';
 
 @Component({
   standalone: true,
@@ -45,7 +43,7 @@ export class TaskReport implements OnInit, OnDestroy {
   private readonly firestore = inject(Firestore);
   private readonly auth = inject(AuthService);
   private readonly destroyRef = inject(DestroyRef);
-
+  private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
   private tasksSub?: Subscription;
   private logSub?: Subscription;
 
@@ -96,11 +94,12 @@ export class TaskReport implements OnInit, OnDestroy {
       return;
     }
 
-    const tasksRef = this.tasksCollectionRef(userId, this.taskScope);
+    const tasksRef = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
+    if (!tasksRef) return;
     this.tasksSub = collectionData(tasksRef, { idField: 'id' })
       .pipe(
         map((rows) =>
-          (rows as Record<string, unknown>[]).map((data) => this.mapTaskDoc(data)),
+          (rows as Record<string, unknown>[]).map((data) => mapFirestoreDocToTask(data)),
         ),
       )
       .subscribe((tasks) => {
@@ -149,72 +148,6 @@ export class TaskReport implements OnInit, OnDestroy {
       .subscribe((rows) => {
         this.activityRows = rows;
       });
-  }
-
-  private mapTaskDoc(data: Record<string, unknown>): Task {
-    const status = normalizeTaskStatusFromDoc(data);
-    const label =
-      typeof data['label'] === 'string' && data['label'].trim() !== '' ? data['label'] : '';
-    const deadline = timestampLikeToDate(data['deadline']);
-    const startAt = timestampLikeToDate(data['startAt']);
-    const endAt = timestampLikeToDate(data['endAt']);
-    const description = typeof data['description'] === 'string' ? data['description'] : '';
-    const priority = clampTaskPriority(data['priority']);
-    const rawAssignee = data['assignee'];
-    const assignee =
-      typeof rawAssignee === 'string' && rawAssignee.trim() !== ''
-        ? rawAssignee.trim()
-        : null;
-    const rawLo = data['listOrderIndex'];
-    const listOrderIndex =
-      typeof rawLo === 'number' && !Number.isNaN(rawLo) ? rawLo : undefined;
-    const rawKo = data['kanbanOrderIndex'];
-    const kanbanOrderIndex =
-      typeof rawKo === 'number' && !Number.isNaN(rawKo) ? rawKo : undefined;
-    const rawKb = data['kanbanColumnId'];
-    const kanbanColumnId =
-      typeof rawKb === 'string' && rawKb.trim() !== '' ? rawKb.trim() : null;
-    const rawParent = data['parentTaskId'];
-    const parentTaskId =
-      typeof rawParent === 'string' && rawParent.trim() !== '' ? rawParent.trim() : null;
-    const createdAt = timestampLikeToDate(data['createdAt']);
-    const updatedAt = timestampLikeToDate(data['updatedAt']);
-    const completedAt = timestampLikeToDate(data['completedAt']);
-    return {
-      ...data,
-      status,
-      label,
-      deadline,
-      startAt,
-      endAt,
-      description,
-      priority,
-      assignee,
-      listOrderIndex,
-      kanbanOrderIndex,
-      kanbanColumnId,
-      parentTaskId,
-      createdAt,
-      updatedAt,
-      completedAt,
-    } as Task;
-  }
-
-  private tasksCollectionRef(userId: string, scope: TaskScope) {
-    if (scope.kind === 'project') {
-      return collection(this.firestore, 'projects', scope.projectId, 'tasks');
-    }
-    const pid = scope.privateListId;
-    return pid === 'default'
-      ? collection(this.firestore, 'accounts', userId, 'tasks')
-      : collection(
-          this.firestore,
-          'accounts',
-          userId,
-          'privateTaskLists',
-          pid,
-          'tasks',
-        );
   }
 
   private activityLogCollectionRef(userId: string, scope: TaskScope) {

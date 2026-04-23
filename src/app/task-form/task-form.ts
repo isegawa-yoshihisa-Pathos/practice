@@ -53,7 +53,17 @@ import { UserAvatar } from '../user-avatar/user-avatar';
 export class TaskForm implements OnInit, OnChanges {
   private readonly auth = inject(AuthService);
 
-  ngOnInit() {}
+  ngOnInit() {
+    if (this.date) {
+      const now = new Date();
+      this.deadlineDate = composeLocalDateTime(this.date, now.getHours(), now.getMinutes());
+      this.deadlineHour = now.getHours();
+      this.deadlineMinute = now.getMinutes();
+      this.startDate = composeLocalDateTime(this.date, now.getHours(), now.getMinutes());
+      this.startHour = now.getHours();
+      this.startMinute = now.getMinutes();
+    }
+  }
 
   /** ダイアログ側の「追加」ボタン用（必須タイトルと同等の判定） */
   canSubmit(): boolean {
@@ -68,6 +78,7 @@ export class TaskForm implements OnInit, OnChanges {
 
   @Input() taskScope: TaskScope = { kind: 'private', privateListId: 'default' };
   @Input() projectMembers: ProjectMemberRow[] = [];
+  @Input() date: Date | null = null;
 
   /** 選択中の担当者（トリガーにアイコン＋表示名を出すため） */
   selectedAssigneeMember(): ProjectMemberRow | null {
@@ -85,13 +96,13 @@ export class TaskForm implements OnInit, OnChanges {
   /** 締切と開始終了は同時に持たない */
   scheduleMode: 'none' | 'deadline' | 'window' = 'none';
   deadlineDate: Date | null = null;
-  deadlineHour = 9;
+  deadlineHour = 0;
   deadlineMinute = 0;
   startDate: Date | null = null;
-  startHour = 9;
+  startHour = 0;
   startMinute = 0;
   endDate: Date | null = null;
-  endHour = 9;
+  endHour = 1;
   endMinute = 0;
 
   readonly hourOptions = TASK_HOUR_OPTIONS;
@@ -124,26 +135,25 @@ export class TaskForm implements OnInit, OnChanges {
     }
   }
 
-  /** 空欄のときだけ現在／1時間後を入れる */
   onScheduleModeChange(mode: string): void {
     const m = mode as 'none' | 'deadline' | 'window';
-    if (m === 'deadline' && !this.deadlineDate) {
-      const now = new Date();
-      this.deadlineDate = startOfLocalDate(now);
+    if (m === 'deadline') {
+      const now = (this.deadlineDate ?? new Date());
+      this.deadlineDate = now;
       const hm = localHourAndMinute(now);
       this.deadlineHour = hm.hour;
       this.deadlineMinute = hm.minute;
     } else if (m === 'window') {
-      const now = new Date();
+      const now = (this.startDate ?? new Date());
       if (!this.startDate) {
-        this.startDate = startOfLocalDate(now);
+        this.startDate = now;
         const hm = localHourAndMinute(now);
         this.startHour = hm.hour;
         this.startMinute = hm.minute;
       }
       if (!this.endDate) {
         const end = new Date(now.getTime() + 3600000);
-        this.endDate = startOfLocalDate(end);
+        this.endDate = end;
         const hm = localHourAndMinute(end);
         this.endHour = hm.hour;
         this.endMinute = hm.minute;
@@ -212,14 +222,15 @@ export class TaskForm implements OnInit, OnChanges {
     this.addTask.emit(base);
     this.newTask = this.emptyTask();
     this.scheduleMode = 'none';
+    this.date = null;
     this.deadlineDate = null;
-    this.deadlineHour = 9;
+    this.deadlineHour = 0;
     this.deadlineMinute = 0;
     this.startDate = null;
-    this.startHour = 9;
+    this.startHour = 0;
     this.startMinute = 0;
     this.endDate = null;
-    this.endHour = 9;
+    this.endHour = 1;
     this.endMinute = 0;
   }
 }

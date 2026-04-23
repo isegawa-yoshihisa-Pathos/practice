@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import { Component, EventEmitter, Input, Output, inject, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -6,6 +6,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatDatepickerModule } from '@angular/material/datepicker';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatDialog } from '@angular/material/dialog';
 import { Task } from '../../models/task';
 import { TaskScope, taskDetailScopeParam } from '../task-scope';
 import { clampTaskPriority } from '../task-priority';
@@ -303,13 +305,12 @@ function startOfCalendarWeek(d: Date, weekStartsMonday: boolean): Date {
 @Component({
   selector: 'app-task-calendar',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatButtonModule, MatTooltipModule, MatButtonToggleModule, MatDatepickerModule],
+  imports: [CommonModule, FormsModule, MatButtonModule, MatTooltipModule, MatButtonToggleModule, MatDatepickerModule, MatMenuModule],
   templateUrl: './task-calendar.html',
   styleUrl: './task-calendar.css',
 })
 export class TaskCalendar {
   private readonly router = inject(Router);
-
   @Input({ required: true }) tasks: Task[] = [];
   @Input({ required: true }) taskScope!: TaskScope;
   @Input() granularity: TaskCalendarGranularity = 'month';
@@ -348,6 +349,13 @@ export class TaskCalendar {
     clientX: number;
     clientY: number;
     task: Task;
+  }>();
+
+  /** 日表示の右クリック */
+  @Output() dayContextMenu = new EventEmitter<{
+    clientX: number;
+    clientY: number;
+    date: Date;
   }>();
 
   readonly maxMonth = CALENDAR_MONTH_MAX_PER_DAY;
@@ -567,10 +575,6 @@ export class TaskCalendar {
     return out;
   }
 
-  /**
-   * 一日タイムライン：時間軸は横向き。予定は帯で表示（重なりは縦レーン）。
-   * 日表示はレーン高を大きくし、帯の最小高さも確保。
-   */
   get dayTimeline(): { blocks: DayTimelineBlock[]; trackHeightPx: number } {
     const { blocks, trackHeightPx } = this.computeHorizontalTimeline(
       this.viewDate,
@@ -901,6 +905,22 @@ export class TaskCalendar {
       clientX: ev.clientX,
       clientY: ev.clientY,
       task,
+    });
+  }
+
+  onDayContextMenu(ev: MouseEvent, date: Date): void {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const now = new Date();
+    const baseDate = new Date(date);
+    baseDate.setHours(now.getHours())
+    baseDate.setMinutes(now.getMinutes())
+    baseDate.setSeconds(now.getSeconds())
+    baseDate.setMilliseconds(now.getMilliseconds())
+    this.dayContextMenu.emit({
+      clientX: ev.clientX,
+      clientY: ev.clientY,
+      date: baseDate,
     });
   }
 }

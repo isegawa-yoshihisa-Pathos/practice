@@ -55,6 +55,7 @@ import { UserAvatar } from '../user-avatar/user-avatar';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatDatepickerModule } from '@angular/material/datepicker';
 import { TaskActivityLogService } from '../task-activity-log.service';
+import { TaskCollectionReferenceService } from '../task-collection-reference.service';
 import {
   TASK_HOUR_OPTIONS,
   TASK_MINUTE_OPTIONS,
@@ -64,7 +65,7 @@ import {
   taskScheduleModeFromFields,
   timestampLikeToDate,
 } from '../task-schedule';
-
+import { mapFirestoreDocToTask } from '../task-firestore-mutation';
 const MAX_CHAT_FILE_BYTES = 8 * 1024 * 1024;
 
 @Component({
@@ -94,7 +95,7 @@ export class TaskDetail implements OnInit, OnDestroy {
   private readonly destroyRef = inject(DestroyRef);
   private readonly projectSession = inject(ProjectSessionService);
   private readonly taskActivityLog = inject(TaskActivityLogService);
-
+  private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
   @ViewChild('chatScroll') private chatScroll?: ElementRef<HTMLDivElement>;
 
   readonly colorChart = TASK_COLOR_CHART;
@@ -227,26 +228,11 @@ export class TaskDetail implements OnInit, OnDestroy {
     return doc(this.firestore, 'projects', this.scopeParam, 'tasks', this.taskId);
   }
 
-  private tasksCollectionRef() {
-    const userId = this.auth.userId();
-    if (!userId) {
-      return null;
-    }
-    if (this.scopeParam === 'private') {
-      return collection(this.firestore, 'accounts', userId, 'tasks');
-    }
-    if (this.scopeParam.startsWith('pl-')) {
-      const listId = this.scopeParam.slice(3);
-      return collection(this.firestore, 'accounts', userId, 'privateTaskLists', listId, 'tasks');
-    }
-    return collection(this.firestore, 'projects', this.scopeParam, 'tasks');
-  }
-
   private subscribeSubtasks(): void {
     this.subtasksSub?.unsubscribe();
     this.subtasksSub = undefined;
     this.subtasks = [];
-    const col = this.tasksCollectionRef();
+    const col = this.taskCollectionRef.tasksCollectionRef(this.auth.userId(), taskScopeFromDetailRouteParam(this.scopeParam));
     const tid = this.taskId;
     if (!col || !tid) {
       return;
@@ -255,7 +241,7 @@ export class TaskDetail implements OnInit, OnDestroy {
     this.subtasksSub = collectionData(q, { idField: 'id' })
       .pipe(
         map((rows) =>
-          (rows as Record<string, unknown>[]).map((data) => this.mapSubtaskDoc(data)),
+          (rows as Record<string, unknown>[]).map((data) => mapFirestoreDocToTask(data)),
         ),
         map((tasks) =>
           [...tasks].sort((a, b) => {
@@ -275,29 +261,6 @@ export class TaskDetail implements OnInit, OnDestroy {
       .subscribe((tasks) => {
         this.subtasks = tasks;
       });
-  }
-
-  private mapSubtaskDoc(data: Record<string, unknown>): Task {
-    const status = normalizeTaskStatusFromDoc(data);
-    const title = typeof data['title'] === 'string' ? data['title'] : '';
-    const label =
-      typeof data['label'] === 'string' && data['label'].trim() !== '' ? data['label'] : '';
-    const priority = clampTaskPriority(data['priority']);
-    const rawLo = data['listOrderIndex'];
-    const listOrderIndex =
-      typeof rawLo === 'number' && !Number.isNaN(rawLo) ? rawLo : undefined;
-    const rawP = data['parentTaskId'];
-    const parentTaskId =
-      typeof rawP === 'string' && rawP.trim() !== '' ? rawP.trim() : null;
-    return {
-      id: String(data['id'] ?? ''),
-      title,
-      label,
-      status,
-      priority,
-      listOrderIndex,
-      parentTaskId,
-    } as Task;
   }
 
   toggleSubtasksExpanded(): void {

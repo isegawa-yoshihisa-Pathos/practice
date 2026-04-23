@@ -26,6 +26,7 @@ import { firestoreStatusFields } from '../../models/task-status';
 import { clampTaskPriority } from '../task-priority';
 import { DEFAULT_KANBAN_COLUMNS, type KanbanColumn } from '../../models/kanban-column';
 import { TaskActivityLogService } from '../task-activity-log.service';
+import { TaskCollectionReferenceService } from '../task-collection-reference.service';
 import { timestampLikeToDate } from '../task-schedule';
 
 export interface TaskDuplicateDialogData {
@@ -51,6 +52,7 @@ export class TaskDuplicateDialog {
   private readonly firestore = inject(Firestore);
   private readonly auth = inject(AuthService);
   private readonly taskActivityLog = inject(TaskActivityLogService);
+  private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
   readonly data = inject<TaskDuplicateDialogData>(MAT_DIALOG_DATA);
 
   loading = true;
@@ -100,22 +102,6 @@ export class TaskDuplicateDialog {
     }
     const cols = await this.normalizeKanbanColumns(snap.data()?.['columns']);
     return cols[0]?.id ?? DEFAULT_KANBAN_COLUMNS[0].id;
-  }
-
-  private tasksCollectionRef(uid: string, scope: TaskScope) {
-    if (scope.kind === 'project') {
-      return collection(this.firestore, 'projects', scope.projectId, 'tasks');
-    }
-    return scope.privateListId === 'default'
-      ? collection(this.firestore, 'accounts', uid, 'tasks')
-      : collection(
-          this.firestore,
-          'accounts',
-          uid,
-          'privateTaskLists',
-          scope.privateListId,
-          'tasks',
-        );
   }
 
   private async loadDestinations(): Promise<void> {
@@ -301,7 +287,8 @@ export class TaskDuplicateDialog {
     sourceScope: TaskScope,
     destScope: TaskScope,
   ): Promise<void> {
-    const destCol = this.tasksCollectionRef(uid, destScope);
+    const destCol = this.taskCollectionRef.tasksCollectionRef(uid, destScope);
+    if (!destCol) return;
     const existingSnap = await getDocs(destCol);
 
     type Shadow = {

@@ -1,3 +1,7 @@
+::ng-deep .custom-tooltip {
+  white-space: pre-line !important;
+}
+
 .task-cal {
   width: 100%;
   box-sizing: border-box;
@@ -324,6 +328,10 @@
   outline-offset: 1px;
 }
 
+.task-cal-h-timeline-track-week:has(.task-cal-h-block:hover){
+  background: #fff;
+}
+
 .task-cal-h-grid-bg {
   position: absolute;
   inset: 0;
@@ -350,15 +358,30 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 3px;
-  margin-left: -1.5px;
+  width: 4px;
+  margin-left: -2px;
   padding: 0;
   border: 1px solid color-mix(in srgb, var(--line-color, #9e9e9e), #000000 10%);
-  border-radius: 1px;
+  border-radius: 2px;
   background: color-mix(in srgb, var(--line-color, #9e9e9e), transparent 30%);
   cursor: pointer;
   pointer-events: auto;
   box-sizing: border-box;
+}
+
+.task-cal-h-deadline-line:hover {
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+}
+
+.task-cal-h-deadline-line:before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
 }
 
 .task-cal-h-deadline-line:focus-visible {
@@ -448,15 +471,23 @@
 }
 
 .task-cal-h-block:hover .task-cal-h-block-main:not(.done) {
-  background: color-mix(in srgb, var(--label-color) 30%, #fff);
+  background: color-mix(in srgb, var(--label-color) 28%, #fff);
 }
 
 .task-cal-h-block-main.done {
   background-color: #bdbdbd;
 }
 
+.task-cal-h-block:hover .task-cal-h-block-main.done {
+  background: #cccccc;
+}
+
 .task-cal-h-block-main.in-progress:not(.done) {
   background: color-mix(in srgb, var(--label-color) 100%, #fff);
+}
+
+.task-cal-h-block:hover .task-cal-h-block-main.in-progress:not(.done) {
+  background: color-mix(in srgb, var(--label-color) 80%, #fff);
 }
 
 .task-cal-h-block-meta {
@@ -495,10 +526,6 @@
   gap:10px 10px;
 }
 
-.task-cal-week-h-grid > :nth-child(n + 5) {
-  border-top: 1px solid rgba(0, 0, 0, 0.12);
-}
-
 .task-cal-week-h-corner {
   min-height: 1px;
 }
@@ -508,6 +535,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: flex-end;
+  border-radius: 6px;
   padding: 6px 6px 6px 0;
   text-align: right;
   cursor: pointer;
@@ -619,7 +647,7 @@
 }
 
 .task-cal-chip:hover .task-cal-chip-main:not(.done) {
-  background: color-mix(in srgb, var(--label-color) 30%, #fafafa);
+  background: color-mix(in srgb, var(--label-color) 28%, #fafafa);
 }
 
 .task-cal-chip-main.done {
@@ -627,7 +655,7 @@
 }
 
 .task-cal-chip:hover .task-cal-chip-main.done {
-  background-color: #b8b8b8;
+  background-color: #cccccc;
 }
 
 .task-cal-chip-main.in-progress:not(.done) {
@@ -635,7 +663,7 @@
 }
 
 .task-cal-chip:hover .task-cal-chip-main.in-progress:not(.done) {
-  background: color-mix(in srgb, var(--label-color) 90%, #fafafa);
+  background: color-mix(in srgb, var(--label-color) 80%, #fafafa);
 }
 
 .task-cal-title-done {

@@ -9,6 +9,7 @@
     #taskForm
     [taskScope]="data.taskScope"
     [projectMembers]="data.projectMembers"
+    [date]="data.date ?? null"
     (addTask)="onAdd($event)"
   ></app-task-form>
 </mat-dialog-content>

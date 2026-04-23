@@ -11,15 +11,13 @@ import {
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { query } from 'firebase/firestore';
 import { TaskListItem } from '../task-list-item/task-list-item';
 import { Task } from '../../models/task';
 import {
   firestoreStatusFields,
   nextTaskStatus,
-  normalizeTaskStatusFromDoc,
-  type TaskStatus,
 } from '../../models/task-status';
-import { clampTaskPriority } from '../task-priority';
 import { sortTasks, TaskSortField } from '../task-sort';
 import {
   colorFilterOptions,
@@ -70,14 +68,14 @@ import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatCheckboxChange, MatCheckboxModule } from '@angular/material/checkbox';
 import { TASK_RETURN_QUERY } from '../task-return-query';
 import { ProjectSessionService } from '../project-session.service';
-import { timestampLikeToDate } from '../task-schedule';
 import {
   DEFAULT_KANBAN_COLUMNS,
   type KanbanColumn,
 } from '../../models/kanban-column';
 import { TASK_STATUS_OPTIONS } from '../../models/task-status';
 import { TaskActivityLogService } from '../task-activity-log.service';
-import { taskStatusTransitionPatch } from '../task-firestore-mutation';
+import { taskStatusTransitionPatch, mapFirestoreDocToTask } from '../task-firestore-mutation';
+import { TaskCollectionReferenceService } from '../task-collection-reference.service';
 
 @Component({
   selector: 'app-task-list',
@@ -110,8 +108,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   private readonly router = inject(Router);
   private readonly projectSession = inject(ProjectSessionService);
   private readonly taskActivityLog = inject(TaskActivityLogService);
-  private sub?: Subscription;
-  private kanbanBoardSub?: Subscription;
+  private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
+  private subscriptions = new Subscription();
 
   @Input() taskScope: TaskScope = { kind: 'private', privateListId: 'default' };
 
@@ -128,7 +126,6 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
 
   /** プロジェクトのメンバー（担当者選択・フィルタ用） */
   projectMembers: ProjectMemberRow[] = [];
-  private membersSub?: Subscription;
 
   /** 未選択は null（ソート条件から除外） */
   sortKey1: TaskSortField | null = null;
@@ -167,10 +164,11 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   kanbanEditColumn: KanbanColumn | null = null;
 
   @ViewChild('taskCtxMenuTrigger') taskCtxMenuTrigger?: MatMenuTrigger;
+  @ViewChild('dayCtxMenuTrigger') dayCtxMenuTrigger?: MatMenuTrigger;
   contextMenuX = 0;
   contextMenuY = 0;
   ctxTask: Task | null = null;
-  /** 右クリック一括メニュー用（2件以上選択かつ対象行が選択内） */
+  ctxDate: Date | null = null;
   ctxBulkMode = false;
   ctxBulkIds: string[] = [];
   /** リスト複数選択 */
@@ -353,14 +351,19 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     return task.id ?? `idx-${_index}`;
   }
 
+  private restartSubscriptions(): void {
+    this.subscriptions.unsubscribe();
+    this.subscriptions = new Subscription();
+    this.subscribeTasks();
+    this.subscribeProjectMembers();
+    void this.subscribeKanbanBoard();
+  }
+
   ngOnInit() {
     /** 表示は常にタブ（taskScope）別 localStorage のみ。URL はグローバルなので初期表示に使わない。 */
     this.loadViewPrefsFromStorage();
     this.onTaskListViewUiChange();
-
-    this.subscribeTasks();
-    this.subscribeProjectMembers();
-    void this.subscribeKanbanBoard();
+    this.restartSubscriptions();
   }
 
   private scopeStorageKey(scope: TaskScope): string {
@@ -552,9 +555,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         this.onTaskListViewUiChange();
       }
       if (!ch.firstChange) {
-        this.subscribeTasks();
-        this.subscribeProjectMembers();
-        void this.subscribeKanbanBoard();
+        this.restartSubscriptions();
         if (!this.isProjectScope) {
           this.filterState = { ...this.filterState, assignee: 'all' };
         }
@@ -563,15 +564,14 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   private subscribeProjectMembers(): void {
-    this.membersSub?.unsubscribe();
-    this.membersSub = undefined;
-    this.projectMembers = [];
     if (this.taskScope.kind !== 'project') {
+      this.projectMembers = [];
       return;
     }
     const pid = this.taskScope.projectId;
     const ref = collection(this.firestore, 'projects', pid, 'members');
-    this.membersSub = collectionData(ref, { idField: 'id' })
+
+    const membersSub = collectionData(ref, { idField: 'id' })
       .pipe(
         map((rows) =>
           (rows as Record<string, unknown>[]).map((data) => {
@@ -590,92 +590,53 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
           }),
         ),
       )
-      .subscribe((members) => {
+      .subscribe({
+        next: (members) => {
         this.projectMembers = members.filter((m) => m.userId);
+        },
+        error: (error) => {
+          console.error('subscribeProjectMembers error:', error);
+        },
       });
+
+    this.subscriptions.add(membersSub);
   }
 
   private subscribeTasks() {
-    this.sub?.unsubscribe();
-    this.sub = undefined;
+    this.subscriptions.unsubscribe();
+    this.subscriptions = new Subscription();
     this.tasks = [];
 
     const userId = this.auth.userId();
-    if (!userId) {
-      return;
-    }
+    if (!userId) return;
+    const baseRef = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
+    if (!baseRef) return;
 
-    const ref = this.tasksCollectionRef(userId);
-
-    this.sub = collectionData(ref, { idField: 'id' })
+    const tasksQuery = query(baseRef);
+    
+    const tasksSub = collectionData(tasksQuery, { idField: 'id' })
       .pipe(
         map((rows) =>
-          (rows as Record<string, unknown>[]).map((data) => {
-            const status = normalizeTaskStatusFromDoc(data as Record<string, unknown>);
-            const label =
-              typeof data['label'] === 'string' && data['label'].trim() !== ''
-                ? data['label']
-                : '';
-            const deadline = timestampLikeToDate(data['deadline']);
-            const startAt = timestampLikeToDate(data['startAt']);
-            const endAt = timestampLikeToDate(data['endAt']);
-            const description =
-              typeof data['description'] === 'string' ? data['description'] : '';
-            const priority = clampTaskPriority(data['priority']);
-            const rawAssignee = data['assignee'];
-            const assignee =
-              typeof rawAssignee === 'string' && rawAssignee.trim() !== ''
-                ? rawAssignee.trim()
-                : null;
-            const rawLo = data['listOrderIndex'];
-            const listOrderIndex =
-              typeof rawLo === 'number' && !Number.isNaN(rawLo) ? rawLo : undefined;
-            const rawKo = data['kanbanOrderIndex'];
-            const kanbanOrderIndex =
-              typeof rawKo === 'number' && !Number.isNaN(rawKo) ? rawKo : undefined;
-            const rawKb = data['kanbanColumnId'];
-            const kanbanColumnId =
-              typeof rawKb === 'string' && rawKb.trim() !== '' ? rawKb.trim() : null;
-            const rawParent = data['parentTaskId'];
-            const parentTaskId =
-              typeof rawParent === 'string' && rawParent.trim() !== ''
-                ? rawParent.trim()
-                : null;
-            const createdAt = timestampLikeToDate(data['createdAt']);
-            const updatedAt = timestampLikeToDate(data['updatedAt']);
-            const completedAt = timestampLikeToDate(data['completedAt']);
-            return {
-              ...data,
-              status,
-              label,
-              deadline,
-              startAt,
-              endAt,
-              description,
-              priority,
-              assignee,
-              listOrderIndex,
-              kanbanOrderIndex,
-              kanbanColumnId,
-              parentTaskId,
-              createdAt,
-              updatedAt,
-              completedAt,
-            } as Task;
-          }),
-        ),
+          (rows as Record<string, unknown>[]).map((data) => mapFirestoreDocToTask(data))
+        )
       )
-      .subscribe((tasks) => {
+      .subscribe({
+        next:(tasks) => {
         this.tasks = tasks;
+        },
+        error:(error) => {
+          console.error('subscribeTasks error:', error);
+        },
       });
+
+    this.subscriptions.add(tasksSub);
   }
 
   addTask(task: Task) {
     const userId = this.auth.userId();
-    if (!userId) {
-      return;
-    }
-    const col = this.tasksCollectionRef(userId);
+    if (!userId) return;
+    const col = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
+    if (!col) return;
     const payload: Record<string, unknown> = {
       title: task.title,
       label: task.label,
@@ -734,10 +695,9 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   addSubtask(parent: Task, task: Task): void {
     const userId = this.auth.userId();
     const parentId = parent.id;
-    if (!userId || !parentId) {
-      return;
-    }
-    const col = this.tasksCollectionRef(userId);
+    if (!userId || !parentId) return;
+    const col = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
+    if (!col) return;
     const payload: Record<string, unknown> = {
       title: task.title,
       label: task.label,
@@ -910,8 +870,6 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
 
   /** カンバン設定ドキュメントを購読 */
   private async subscribeKanbanBoard(): Promise<void> {
-    this.kanbanBoardSub?.unsubscribe();
-    this.kanbanBoardSub = undefined;
     const ref = this.kanbanBoardDocRef();
     if (!ref) {
       this.kanbanColumnList = [...DEFAULT_KANBAN_COLUMNS];
@@ -930,10 +888,17 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     } catch (e) {
       console.error('subscribeKanbanBoard seed failed:', e);
     }
-    this.kanbanBoardSub = docData(ref).subscribe((data) => {
+    const kanbanBoardSub = docData(ref).subscribe({
+      next: (data) => {
       const raw = data?.['columns'];
       this.kanbanColumnList = this.normalizeKanbanColumnsFromDoc(raw);
+    },
+    error: (error) => {
+      console.error('subscribeKanbanBoard error:', error);
+    },
     });
+
+    this.subscriptions.add(kanbanBoardSub);
   }
 
   private normalizeKanbanColumnsFromDoc(raw: unknown): KanbanColumn[] {
@@ -1352,23 +1317,6 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     });
   }
 
-  private tasksCollectionRef(userId: string) {
-    if (this.taskScope.kind === 'project') {
-      return collection(this.firestore, 'projects', this.taskScope.projectId, 'tasks');
-    }
-    const pid = this.taskScope.privateListId;
-    return pid === 'default'
-      ? collection(this.firestore, 'accounts', userId, 'tasks')
-      : collection(
-          this.firestore,
-          'accounts',
-          userId,
-          'privateTaskLists',
-          pid,
-          'tasks',
-        );
-  }
-
   private taskDocRef(taskId: string) {
     const userId = this.auth.userId();
     if (!userId) {
@@ -1396,12 +1344,15 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   openAddTaskDialog(): void {
+    const date = this.ctxDate;
+    this.ctxDate = null;
     const ref = this.dialog.open(TaskFormDialog, {
       width: 'min(96vw, 560px)',
       autoFocus: 'first-tabbable',
       data: {
         taskScope: this.taskScope,
         projectMembers: this.projectMembers,
+        date,
       },
     });
     ref.afterClosed().subscribe((task: Task | undefined) => {
@@ -1412,6 +1363,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   openSubtaskDialog(parent: Task): void {
+    const date = this.ctxDate;
+    this.ctxDate = null;
     const ref = this.dialog.open(TaskFormDialog, {
       width: 'min(96vw, 560px)',
       autoFocus: 'first-tabbable',
@@ -1420,6 +1373,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         projectMembers: this.projectMembers,
         dialogMode: 'subtask' as const,
         parentTask: parent,
+        date,
       },
     });
     ref.afterClosed().subscribe((task: Task | undefined) => {
@@ -1448,6 +1402,13 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     this.contextMenuX = clientX;
     this.contextMenuY = clientY;
     queueMicrotask(() => this.taskCtxMenuTrigger?.openMenu());
+  }
+
+  openDayContextMenuAt(clientX: number, clientY: number, date: Date): void {
+    this.ctxDate = date;
+    this.contextMenuX = clientX;
+    this.contextMenuY = clientY;
+    queueMicrotask(() => this.dayCtxMenuTrigger?.openMenu());
   }
 
   ctxBulkEditNavigate(): void {
@@ -1712,8 +1673,6 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnDestroy() {
-    this.sub?.unsubscribe();
-    this.membersSub?.unsubscribe();
-    this.kanbanBoardSub?.unsubscribe();
+    this.subscriptions.unsubscribe();
   }
 }
