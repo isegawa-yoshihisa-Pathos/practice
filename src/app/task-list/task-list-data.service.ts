@@ -10,14 +10,15 @@ import {
   DocumentData,
 } from '@angular/fire/firestore';
 import { Subscription, map } from 'rxjs';
-import { Task } from '../models/task';
-import { mapFirestoreDocToTask } from './task-firestore-mutation';
+import { Task } from '../../models/task';
+import type { KanbanColumn } from '../../models/kanban-column';
+import { mapFirestoreDocToTask } from '../task-firestore-mutation';
 import {
   TaskFilterState,
   defaultTaskFilterState,
   filterTasks,
-} from './task-filter';
-import { TaskSortField, sortTasks } from './task-sort';
+} from '../task-filter';
+import { TaskSortField, sortTasks } from '../task-sort';
 
 export type TaskListSortKeys = {
   f1: TaskSortField | null;
@@ -31,10 +32,17 @@ function listOrderNum(t: Task): number {
   return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
 }
 
+function kanbanOrderNum(t: Task): number {
+  const v = t.kanbanOrderIndex;
+  return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
+}
+
 @Injectable()
 export class TaskListDataService {
   private _tasks = signal<Task[]>([]);
   readonly tasks = this._tasks.asReadonly();
+
+  selectedTaskIdSet = signal<Set<string>>(new Set());
 
   private rootSubscription?: Subscription;
   private subTaskUnsubscribers = new Map<string, Unsubscribe>();
@@ -107,6 +115,127 @@ export class TaskListDataService {
     });
   }
 
+  /** 親が子を持つ（フィルタ後に1件以上） */
+  hasChildTasks(parentId: string | undefined): boolean {
+    if (!parentId) return false;
+
+    const parentTask = this.tasks().find(t => t.id === parentId);
+    return !!(parentTask && (parentTask.childTaskCount ?? 0) > 0);
+  }
+
+  toggleSubtasksExpanded(parentId: string): void {
+    const current = this.expandedTaskIds();
+    const next = new Set(current);
+    if (next.has(parentId)) {
+      next.delete(parentId);
+    } else {
+      next.add(parentId);
+    }
+    this.expandedTaskIds.set(next);
+  }
+
+  isSubtasksExpanded(parentId: string | undefined): boolean {
+    return !!parentId && this.expandedTaskIds().has(parentId);
+  }
+
+  /** リスト展開：同一親の子（リスト順のみ） */
+  subtasksForParentInListOrder(parentId: string): Task[] {
+    return this.filteredTasks()
+      .filter((t) => t.parentTaskId === parentId)
+      .sort((a, b) => {
+        const c = listOrderNum(a) - listOrderNum(b);
+        if (c !== 0) {
+          return c;
+        }
+        return (a.title ?? '').localeCompare(b.title ?? '');
+      });
+  }
+
+  /** リストに表示中の行（ルート＋展開中の子）の ID — 親テンプレの一括チェックは子 ViewChild より先に評価されるため DataService 側で算出する */
+  listBulkSelectableTaskIds(): string[] {
+    const ids: string[] = [];
+    for (const t of this.displayRootTasks()) {
+      if (t.id) {
+        ids.push(t.id);
+      }
+      const pid = t.id;
+      if (pid && this.isSubtasksExpanded(pid)) {
+        for (const st of this.subtasksForParentInListOrder(pid)) {
+          if (st.id) {
+            ids.push(st.id);
+          }
+        }
+      }
+    }
+    return ids;
+  }
+
+  /** タスクが属するカンバン列 ID（未設定は先頭列） */
+  kanbanColumnIdForTask(task: Task, kanbanColumnList: KanbanColumn[]): string {
+    const first = kanbanColumnList[0]?.id ?? '';
+    const k =
+      typeof task.kanbanColumnId === 'string' ? task.kanbanColumnId.trim() : '';
+    if (k && kanbanColumnList.some((c) => c.id === k)) {
+      return k;
+    }
+    return first;
+  }
+
+  tasksForKanbanColumnId(
+    colId: string,
+    kanbanColumnList: KanbanColumn[],
+  ): Task[] {
+    const filtered = this.filteredTasks().filter((t) => !t.parentTaskId);
+    const inCol = filtered.filter(
+      (t) => this.kanbanColumnIdForTask(t, kanbanColumnList) === colId,
+    );
+    return [...inCol].sort((a, b) => {
+      const c = kanbanOrderNum(a) - kanbanOrderNum(b);
+      if (c !== 0) {
+        return c;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+  }
+
+  /** カンバン展開：同一親の子（カンバン順のみ） */
+  subtasksForParentKanban(parentId: string): Task[] {
+    const filtered = this.filteredTasks().filter(
+      (t) => t.parentTaskId === parentId,
+    );
+    return [...filtered].sort((a, b) => {
+      const c = kanbanOrderNum(a) - kanbanOrderNum(b);
+      if (c !== 0) {
+        return c;
+      }
+      return (a.title ?? '').localeCompare(b.title ?? '');
+    });
+  }
+
+  /** カンバンに表示中のカード（全列のルート＋展開中の子）の ID */
+  kanbanBulkSelectableTaskIds(kanbanColumnList: KanbanColumn[]): string[] {
+    if (!kanbanColumnList.length) {
+      return [];
+    }
+    const ids: string[] = [];
+    for (const col of kanbanColumnList) {
+      for (const t of this.tasksForKanbanColumnId(col.id, kanbanColumnList)) {
+        if (t.id) {
+          ids.push(t.id);
+        }
+        const pid = t.id;
+        if (pid && this.isSubtasksExpanded(pid)) {
+          for (const st of this.subtasksForParentKanban(pid)) {
+            if (st.id) {
+              ids.push(st.id);
+            }
+          }
+        }
+      }
+    }
+    return ids;
+  }
+
   setProjectScope(isProject: boolean): void {
     this.isProjectScope.set(isProject);
   }
@@ -121,6 +250,60 @@ export class TaskListDataService {
 
   patchSortKeys(partial: Partial<TaskListSortKeys>): void {
     this.sortKeys.update((s) => ({ ...s, ...partial }));
+  }
+
+  isTaskSelected(taskId: string | undefined): boolean {
+    return !!taskId && this.selectedTaskIdSet().has(taskId);
+  }
+
+  /**　親タスクの選択を変更すると子タスクの選択も変更される */
+  onTaskSelectionChange(task: Task, selected: boolean): void {
+    const id = task.id;
+    if (!id) {
+      return;
+    }
+    const subtree = this.collectSubtreeIds(id);
+    const next = new Set(this.selectedTaskIdSet());
+    if (selected) {
+      for (const x of subtree) {
+        next.add(x);
+      }
+    } else {
+      for (const x of subtree) {
+        next.delete(x);
+      }
+    }
+    this.selectedTaskIdSet.set(next);
+  }
+
+  clearTaskSelection(): void {
+    this.selectedTaskIdSet.set(new Set());
+  }
+
+  selectAllTasks(checked: boolean, selectableTaskIds: string[]): void {
+    if (checked) {
+      const next = new Set(this.selectedTaskIdSet());
+      for (const id of selectableTaskIds) {
+        next.add(id);
+      }
+      this.selectedTaskIdSet.set(next);
+    } else {
+      this.clearTaskSelection();
+    }
+  }
+
+  private collectSubtreeIds(rootId: string): Set<string> {
+    const out = new Set<string>();
+    const walk = (pid: string) => {
+      out.add(pid);
+      for (const x of this.tasks()) {
+        if (x.parentTaskId === pid && x.id) {
+          walk(x.id);
+        }
+      }
+    };
+    walk(rootId);
+    return out;
   }
 
   /**
@@ -233,5 +416,6 @@ export class TaskListDataService {
     this._tasks.set([]);
     this.expandedTaskIds.set(new Set());
     this.currentCollectionRef = null;
+    this.clearTaskSelection();
   }
 }

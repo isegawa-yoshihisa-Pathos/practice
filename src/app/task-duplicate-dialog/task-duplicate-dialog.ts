@@ -1,24 +1,10 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import {
-  MAT_DIALOG_DATA,
-  MatDialogModule,
-  MatDialogRef,
-} from '@angular/material/dialog';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import {
-  Firestore,
-  collection,
-  addDoc,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  Timestamp,
-  serverTimestamp,
-} from '@angular/fire/firestore';
+import { Firestore, collection, addDoc, doc, getDoc, getDocs, setDoc, Timestamp, serverTimestamp } from '@angular/fire/firestore';
 import { AuthService } from '../auth.service';
 import { TaskScope } from '../task-scope';
 import type { Task } from '../../models/task';

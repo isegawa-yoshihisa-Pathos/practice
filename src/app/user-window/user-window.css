@@ -44,6 +44,37 @@ app-task-list {
   min-width: 0;
 }
 
+.multi-cal-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 48px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 600;
+  cursor: pointer;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.multi-cal-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.multi-cal-btn.active {
+  border-color: #1890ff;
+  background: #e6f7ff;
+  color: #096dd9;
+}
+
+
 .nav-add-task-list-btn {
   flex: 0 0 auto;
   display: inline-flex;

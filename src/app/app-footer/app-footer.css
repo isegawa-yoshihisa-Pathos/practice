@@ -1,0 +1,16 @@
+.app-shell-toolbar {
+  display: flex;
+  justify-content: center;
+  height: 180px;
+}
+
+.app-footer-text {
+  font-size: 14px;
+  color: #666;
+}
+
+.copy-left {
+  font-size: 18px;
+  color: #666;
+  transform: rotateY(180deg);
+}

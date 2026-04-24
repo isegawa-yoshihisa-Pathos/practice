@@ -1,4 +1,3 @@
-/** アバター未設定時のイニシャル（1〜2文字） */
 export function avatarInitials(displayName: string, userId: string): string {
   const raw = (displayName || userId || '?').trim();
   if (!raw) {
@@ -13,7 +12,6 @@ export function avatarInitials(displayName: string, userId: string): string {
   return raw.slice(0, 2).toUpperCase();
 }
 
-/** userId から決定的な背景色（HSL） */
 export function avatarFallbackHue(userId: string): number {
   let h = 0;
   for (let i = 0; i < userId.length; i++) {

@@ -1,0 +1,56 @@
+<div class="task-list-shell mat-elevation-z1">
+    <div
+    cdkDropList
+    class="task-drop-list"
+    (cdkDropListDropped)="onTaskDrop($event)"
+    [cdkDropListDisabled]="!canReorder"
+    >
+    @for (task of DataService.displayRootTasks(); track task.id) {
+        <div
+        cdkDrag
+        class="task-list-drag-row"
+        [cdkDragData]="{ kind: 'root', task }"
+        [cdkDragDisabled]="!canReorder"
+        >
+        <app-task-list-item
+            [task]="task"
+            [taskScope]="taskScope"
+            [projectMembers]="projectMembers"
+            [showDragHandle]="canReorder"
+            [showSubtasksToggle]="true"
+            [hasSubtasks]="DataService.hasChildTasks(task.id)"
+            [subtasksExpanded]="DataService.isSubtasksExpanded(task.id)"
+            [selectionMode]="true"
+            [selected]="DataService.isTaskSelected(task.id)"
+            (selectedChange)="DataService.onTaskSelectionChange(task, $event)"
+            (toggleSubtasksUi)="onSubtasksToggleForListItem(task)"
+            (contextMenuRequest)="onListItemContextMenu($event)"
+            (deleteRequested)="deleteRequested.emit($event)"
+        ></app-task-list-item>
+        </div>
+        @if (task.id && DataService.isSubtasksExpanded(task.id)) {
+        @for (st of subtasksForParentList(task.id); track st.id) {
+            <div
+            cdkDrag
+            class="task-list-drag-row task-list-drag-row--sub"
+            [cdkDragData]="{ kind: 'sub', task: st, parentId: task.id }"
+            [cdkDragDisabled]="!canReorder"
+            >
+            <app-task-list-item
+                [task]="st"
+                [taskScope]="taskScope"
+                [projectMembers]="projectMembers"
+                [showDragHandle]="canReorder"
+                [isSubtask]="true"
+                [selectionMode]="true"
+                [selected]="DataService.isTaskSelected(st.id)"
+                (selectedChange)="DataService.onTaskSelectionChange(st, $event)"
+                (contextMenuRequest)="onListItemContextMenu($event)"
+                (deleteRequested)="deleteRequested.emit($event)"
+            ></app-task-list-item>
+            </div>
+        }
+        }
+    }
+    </div>
+</div>

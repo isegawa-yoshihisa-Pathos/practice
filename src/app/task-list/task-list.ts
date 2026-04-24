@@ -2,21 +2,18 @@ import { Component, inject, Input, OnChanges, OnDestroy, OnInit, SimpleChanges, 
 import { ActivatedRoute, Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { TaskListItem } from '../task-list-item/task-list-item';
 import { Task } from '../../models/task';
-import { firestoreStatusFields, nextTaskStatus } from '../../models/task-status';
+import { firestoreStatusFields } from '../../models/task-status';
 import { TaskSortField } from '../task-sort';
 import { colorFilterOptions, DueDateFilter, isFilterDefaultForReorder } from '../task-filter';
-import { CdkDragDrop, DragDropModule, moveItemInArray } from '@angular/cdk/drag-drop';
+import { DragDropModule } from '@angular/cdk/drag-drop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSelectModule } from '@angular/material/select';
 import { MatRadioModule } from '@angular/material/radio';
 import { MatDividerModule } from '@angular/material/divider';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
-import { TaskFormDialog } from '../task-form-dialog/task-form-dialog';
-import { TaskDuplicateDialog } from '../task-duplicate-dialog/task-duplicate-dialog';
+import { MatDialogModule } from '@angular/material/dialog';
 import { Firestore, collection, addDoc, doc, Timestamp, serverTimestamp, collectionData, writeBatch, updateDoc, getDoc, setDoc, docData, increment } from '@angular/fire/firestore';
 import { map } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
@@ -41,17 +38,22 @@ import {
 } from '../../models/kanban-column';
 import { TASK_STATUS_OPTIONS } from '../../models/task-status';
 import { TaskActivityLogService } from '../task-activity-log.service';
-import { taskStatusTransitionPatch, mapFirestoreDocToTask } from '../task-firestore-mutation';
 import { TaskCollectionReferenceService } from '../task-collection-reference.service';
-import { TaskListDataService } from '../task-list-data.service';
+import { TaskListDataService } from './task-list-data.service';
+import { TaskListContextActionsService } from './task-list-context-actions.service';
+import { TaskListTaskCtxMenu } from './task-list-ctx-menu';
+import { TaskListKanbanView } from './task-list-kanban-view';
+import { TaskListListView } from './task-list-list-view';
 
 @Component({
   selector: 'app-task-list',
   imports: [
     CommonModule,
     FormsModule,
-    TaskListItem,
     TaskCalendar,
+    TaskListTaskCtxMenu,
+    TaskListKanbanView,
+    TaskListListView,
     DragDropModule,
     MatButtonModule,
     MatButtonToggleModule,
@@ -67,19 +69,18 @@ import { TaskListDataService } from '../task-list-data.service';
   ],
   templateUrl: './task-list.html',
   styleUrl: './task-list.css',
-  providers: [TaskListDataService],
+  providers: [TaskListDataService, TaskListContextActionsService],
 })
 export class TaskList implements OnInit, OnDestroy, OnChanges {
   private readonly firestore = inject(Firestore);
   private readonly auth = inject(AuthService);
-  private readonly dialog = inject(MatDialog);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectSession = inject(ProjectSessionService);
   private readonly taskActivityLog = inject(TaskActivityLogService);
   private readonly taskCollectionRef = inject(TaskCollectionReferenceService);
-  /** テンプレートでフィルタ・ソートの signal 更新に使用 */
-  readonly taskListDataService = inject(TaskListDataService);
+  readonly DataService = inject(TaskListDataService);
+  readonly ContextActions = inject(TaskListContextActionsService);
   private subscriptions = new Subscription();
 
   @Input() taskScope: TaskScope = { kind: 'private', privateListId: 'default' };
@@ -121,11 +122,11 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   /** Firestore と同期するカンバン列 */
   kanbanColumnList: KanbanColumn[] = [...DEFAULT_KANBAN_COLUMNS];
 
-  /** 単一 mat-menu 用（編集ボタンでセット） */
-  kanbanEditColumn: KanbanColumn | null = null;
-
   @ViewChild('taskCtxMenuTrigger') taskCtxMenuTrigger?: MatMenuTrigger;
   @ViewChild('dayCtxMenuTrigger') dayCtxMenuTrigger?: MatMenuTrigger;
+  @ViewChild(TaskListTaskCtxMenu) taskCtxMenu?: TaskListTaskCtxMenu;
+  @ViewChild(TaskListKanbanView) kanbanView?: TaskListKanbanView;
+
   contextMenuX = 0;
   contextMenuY = 0;
   ctxTask: Task | null = null;
@@ -134,14 +135,29 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   ctxBulkIds: string[] = [];
 
   get tasks(): Task[] {
-    return this.taskListDataService.tasks();
+    return this.DataService.tasks();
   }
 
   get displayRootTasks(): Task[] {
-    return this.taskListDataService.displayRootTasks();
+    return this.DataService.displayRootTasks();
   }
-  /** リスト複数選択 */
-  private selectedTaskIdSet = new Set<string>();
+
+  /** 並べ替えヒント用（`TaskListListView` の `canReorder` と条件を揃える） */
+  get canReorder(): boolean {
+    if (this.viewMode !== 'list') {
+      return false;
+    }
+    const sk = this.DataService.sortKeys();
+    return (
+      isFilterDefaultForReorder(
+        this.DataService.filterState(),
+        this.taskScope.kind === 'project',
+      ) &&
+      sk.f1 === null &&
+      sk.f2 === null &&
+      sk.f3 === null
+    );
+  }
 
   /** フィルタのスウォッチ用。チャート外の #RRGGBB もその色で表示 */
   labelCssForFilter(hex: string): string {
@@ -153,7 +169,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   resetFilters(): void {
-    this.taskListDataService.resetFilters();
+    this.DataService.resetFilters();
   }
 
   get isProjectScope(): boolean {
@@ -162,7 +178,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
 
   /** 担当者フィルタの選択行（トリガー表示用） */
   filterSelectedMember(): ProjectMemberRow | null {
-    const id = this.taskListDataService.filterState().assignee;
+    const id = this.DataService.filterState().assignee;
     if (id === 'all' || id === 'unassigned') {
       return null;
     }
@@ -171,70 +187,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
 
   /** 色フィルタの候補（チャート＋タスクに含まれるその他の色） */
   get colorOptionsForFilter(): string[] {
-    return colorFilterOptions(this.taskListDataService.tasks());
-  }
-
-  /** リスト用の並びキー */
-  private listOrderNum(t: Task): number {
-    const v = t.listOrderIndex;
-    return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
-  }
-
-  /** カンバン用の並びキー */
-  private kanbanOrderNum(t: Task): number {
-    const v = t.kanbanOrderIndex;
-    return typeof v === 'number' && !Number.isNaN(v) ? v : Number.MAX_SAFE_INTEGER;
-  }
-
-  /** リスト展開：同一親の子（リスト順のみ） */
-  subtasksForParentList(parentId: string): Task[] {
-    return this.taskListDataService
-      .filteredTasks()
-      .filter((t) => t.parentTaskId === parentId)
-      .sort((a, b) => {
-      const c = this.listOrderNum(a) - this.listOrderNum(b);
-      if (c !== 0) {
-        return c;
-      }
-      return (a.title ?? '').localeCompare(b.title ?? '');
-    });
-  }
-
-  /** カンバン展開：同一親の子（カンバン順のみ） */
-  subtasksForParentKanban(parentId: string): Task[] {
-    const filtered = this.taskListDataService
-      .filteredTasks()
-      .filter((t) => t.parentTaskId === parentId);
-    return [...filtered].sort((a, b) => {
-      const c = this.kanbanOrderNum(a) - this.kanbanOrderNum(b);
-      if (c !== 0) {
-        return c;
-      }
-      return (a.title ?? '').localeCompare(b.title ?? '');
-    });
-  }
-
-  /** 親が子を持つ（フィルタ後に1件以上） */
-  hasChildTasks(parentId: string | undefined): boolean {
-    if (!parentId) return false;
-
-    const parentTask = this.taskListDataService.tasks().find(t => t.id === parentId);
-    return !!(parentTask && (parentTask.childTaskCount ?? 0) > 0);
-  }
-
-  toggleSubtasksExpanded(parentId: string): void {
-    const current = this.taskListDataService.expandedTaskIds();
-    const next = new Set(current);
-    if (next.has(parentId)) {
-      next.delete(parentId);
-    } else {
-      next.add(parentId);
-    }
-    this.taskListDataService.expandedTaskIds.set(next);
-  }
-
-  isSubtasksExpanded(parentId: string | undefined): boolean {
-    return !!parentId && this.taskListDataService.expandedTaskIds().has(parentId);
+    return colorFilterOptions(this.DataService.tasks());
   }
 
   onSubtasksToggleForListItem(task: Task): void {
@@ -242,8 +195,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (!id) {
       return;
     }
-    if (this.hasChildTasks(id)) {
-      this.toggleSubtasksExpanded(id);
+    if (this.DataService.hasChildTasks(id)) {
+      this.DataService.toggleSubtasksExpanded(id);
     } else {
       this.openSubtaskDialog(task);
     }
@@ -255,53 +208,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     const baseRef = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
     if (!baseRef) return;
 
-    this.taskListDataService.subscribeSubtasks(parentId, baseRef);
-  }
-
-  /** リスト用：ルート行と展開された子行をフラットに（ドラッグ検証用） */
-  private visibleListRows(): { kind: 'root' | 'sub'; task: Task; parentId?: string }[] {
-    const out: { kind: 'root' | 'sub'; task: Task; parentId?: string }[] = [];
-    for (const t of this.displayRootTasks) {
-      out.push({ kind: 'root', task: t });
-      const id = t.id;
-      if (id && this.isSubtasksExpanded(id)) {
-        for (const s of this.subtasksForParentList(id)) {
-          out.push({ kind: 'sub', task: s, parentId: id });
-        }
-      }
-    }
-    return out;
-  }
-
-  private isValidListRowOrder(
-    rows: { kind: 'root' | 'sub'; task: Task; parentId?: string }[],
-  ): boolean {
-    let currentRootId: string | null = null;
-    for (const r of rows) {
-      if (r.kind === 'root') {
-        currentRootId = r.task.id ?? null;
-      } else {
-        if (!currentRootId || r.parentId !== currentRootId) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }
-
-  /** フィルタ初期・並び替え条件なしのときだけ手動ドラッグを有効にする */
-  get canReorder(): boolean {
-    const sk = this.taskListDataService.sortKeys();
-    return (
-      this.viewMode === 'list' &&
-      isFilterDefaultForReorder(
-        this.taskListDataService.filterState(),
-        this.isProjectScope,
-      ) &&
-      sk.f1 === null &&
-      sk.f2 === null &&
-      sk.f3 === null
-    );
+    this.DataService.subscribeSubtasks(parentId, baseRef);
   }
 
   trackByTaskId(_index: number, task: Task): string {
@@ -320,7 +227,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     /** 表示は常にタブ（taskScope）別 localStorage のみ。URL はグローバルなので初期表示に使わない。 */
     this.loadViewPrefsFromStorage();
     this.onTaskListViewUiChange();
-    this.taskListDataService.setProjectScope(this.isProjectScope);
+    this.DataService.setProjectScope(this.isProjectScope);
     this.restartSubscriptions();
   }
 
@@ -382,80 +289,16 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   }
 
   isTaskSelected(taskId: string | undefined): boolean {
-    return !!taskId && this.selectedTaskIdSet.has(taskId);
-  }
-
-  /**　親タスクの選択を変更すると子タスクの選択も変更される */
-  onTaskSelectionChange(task: Task, selected: boolean): void {
-    const id = task.id;
-    if (!id) {
-      return;
-    }
-    const subtree = this.collectSubtreeIds(id);
-    const next = new Set(this.selectedTaskIdSet);
-    if (selected) {
-      for (const x of subtree) {
-        next.add(x);
-      }
-    } else {
-      for (const x of subtree) {
-        next.delete(x);
-      }
-    }
-    this.selectedTaskIdSet = next;
-  }
-
-  private clearTaskSelection(): void {
-    this.selectedTaskIdSet = new Set();
-  }
-
-  /** リストに表示中の行（ルート＋展開中の子）の ID */
-  listSelectableTaskIds(): string[] {
-    const ids: string[] = [];
-    for (const t of this.displayRootTasks) {
-      if (t.id) {
-        ids.push(t.id);
-      }
-      const pid = t.id;
-      if (pid && this.isSubtasksExpanded(pid)) {
-        for (const st of this.subtasksForParentList(pid)) {
-          if (st.id) {
-            ids.push(st.id);
-          }
-        }
-      }
-    }
-    return ids;
-  }
-
-  /** カンバンに表示中のカード（全列のルート＋展開中の子）の ID */
-  kanbanSelectableTaskIds(): string[] {
-    const ids: string[] = [];
-    for (const col of this.kanbanColumnList) {
-      for (const t of this.tasksForKanbanColumnId(col.id)) {
-        if (t.id) {
-          ids.push(t.id);
-        }
-        const pid = t.id;
-        if (pid && this.isSubtasksExpanded(pid)) {
-          for (const st of this.subtasksForParentKanban(pid)) {
-            if (st.id) {
-              ids.push(st.id);
-            }
-          }
-        }
-      }
-    }
-    return ids;
+    return this.DataService.isTaskSelected(taskId);
   }
 
   /** リスト／カンバン一括選択用 */
   selectableTaskIdsForBulk(): string[] {
     if (this.viewMode === 'kanban') {
-      return this.kanbanSelectableTaskIds();
+      return this.DataService.kanbanBulkSelectableTaskIds(this.kanbanColumnList);
     }
     if (this.viewMode === 'list') {
-      return this.listSelectableTaskIds();
+      return this.DataService.listBulkSelectableTaskIds();
     }
     return [];
   }
@@ -465,30 +308,22 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (visible.length === 0) {
       return false;
     }
-    return visible.every((id) => this.selectedTaskIdSet.has(id));
+    return visible.every((id) => this.DataService.isTaskSelected(id));
   }
 
   isSomeVisibleSelected(): boolean {
     const visible = this.selectableTaskIdsForBulk();
-    return visible.some((id) => this.selectedTaskIdSet.has(id));
+    return visible.some((id) => this.DataService.isTaskSelected(id));
   }
 
   onBulkSelectCheckboxChange(ev: MatCheckboxChange): void {
-    if (ev.checked) {
-      const next = new Set(this.selectedTaskIdSet);
-      for (const id of this.selectableTaskIdsForBulk()) {
-        next.add(id);
-      }
-      this.selectedTaskIdSet = next;
-    } else {
-      this.clearTaskSelection();
-    }
+    this.DataService.selectAllTasks(ev.checked, this.selectableTaskIdsForBulk());
   }
 
   /** ユーザーがリスト/カレンダー/カンバンを切り替えたとき URL と localStorage を同期 */
   onTaskListViewUiChange(): void {
     if (this.viewMode !== 'list') {
-      this.clearTaskSelection();
+      this.DataService.clearTaskSelection();
     }
     this.persistCurrentViewPrefsToStorage();
     const queryParams: Record<string, string | null> = {
@@ -513,10 +348,10 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         this.onTaskListViewUiChange();
       }
       if (!ch.firstChange) {
-        this.taskListDataService.setProjectScope(this.isProjectScope);
+        this.DataService.setProjectScope(this.isProjectScope);
         this.restartSubscriptions();
         if (!this.isProjectScope) {
-          this.taskListDataService.patchFilter({ assignee: 'all' });
+          this.DataService.patchFilter({ assignee: 'all' });
         }
       }
     }
@@ -567,7 +402,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     const baseRef = this.taskCollectionRef.tasksCollectionRef(userId, this.taskScope);
     if (!baseRef) return;
 
-    this.taskListDataService.initForScope(baseRef);
+    this.DataService.initForScope(baseRef);
   }
 
   addTask(task: Task) {
@@ -603,7 +438,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (firstCol) {
       payload['kanbanColumnId'] = firstCol;
     }
-    const roots = this.taskListDataService.tasks().filter((t) => !t.parentTaskId);
+    const roots = this.DataService.tasks().filter((t) => !t.parentTaskId);
     let maxList = -1;
     let maxKb = -1;
     for (const t of roots) {
@@ -663,9 +498,9 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
       const a = typeof task.assignee === 'string' ? task.assignee.trim() : '';
       payload['assignee'] = a || null;
     }
-    const pCol = this.columnIdForTask(parent);
+    const pCol = this.kanbanView?.columnIdForTask(parent) ?? '';
     payload['kanbanColumnId'] = pCol;
-    const siblings = this.taskListDataService.tasks().filter((t) => t.parentTaskId === parentId);
+    const siblings = this.DataService.tasks().filter((t) => t.parentTaskId === parentId);
     let maxList = -1;
     let maxKb = -1;
     for (const t of siblings) {
@@ -699,110 +534,13 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     } catch (e) {
       console.error('addSubtask failed:', e);
     }
-    if (this.taskListDataService.expandedTaskIds().has(parentId)) {
+    if (this.DataService.expandedTaskIds().has(parentId)) {
       return;
     }
-    const next = new Set(this.taskListDataService.expandedTaskIds());
+    const next = new Set(this.DataService.expandedTaskIds());
     next.add(parentId);
-    this.taskListDataService.expandedTaskIds.set(next);
+    this.DataService.expandedTaskIds.set(next);
     this.startSubtaskSubscription(parentId);
-  }
-
-  private insertionIndexInRestForMulti(
-    length: number,
-    selectedIndices: ReadonlySet<number>,
-    cur: number,
-  ): number {
-    const end = Math.max(0, Math.min(cur + 1, length));
-    let k = 0;
-    for (let i = 0; i < end; i++) {
-      if (!selectedIndices.has(i)) {
-        k++;
-      }
-    }
-    return k;
-  }
-
-  onTaskDrop(event: CdkDragDrop<{ kind: 'root' | 'sub'; task: Task; parentId?: string }[]>): void {
-    if (!this.canReorder) {
-      return;
-    }
-    const rows = [...this.visibleListRows()];
-    const prev = event.previousIndex;
-    const cur = event.currentIndex;
-    if (prev < 0 || prev >= rows.length || cur < 0 || cur > rows.length) {
-      return;
-    }
-
-    const idxSelected = (i: number) => {
-      const id = rows[i]?.task.id;
-      return !!id && this.selectedTaskIdSet.has(id);
-    };
-
-    const selectedIndices = new Set<number>();
-    for (let i = 0; i < rows.length; i++) {
-      if (idxSelected(i)) {
-        selectedIndices.add(i);
-      }
-    }
-    if (!selectedIndices.has(prev)) {
-      selectedIndices.clear();
-      selectedIndices.add(prev);
-    }
-
-    if (selectedIndices.size === 1) {
-      if (prev === cur) {
-        return;
-      }
-      const merged = [...rows];
-      moveItemInArray(merged, prev, cur);
-      if (!this.isValidListRowOrder(merged)) {
-        return;
-      }
-      void this.persistFromVisibleRowOrder(merged);
-      return;
-    }
-
-    const sortedSel = [...selectedIndices].sort((a, b) => a - b);
-    const block = sortedSel.map((i) => rows[i]);
-    const rest = rows.filter((_, i) => !selectedIndices.has(i));
-    const k = this.insertionIndexInRestForMulti(rows.length, selectedIndices, cur);
-    const merged = [...rest.slice(0, k), ...block, ...rest.slice(k)];
-    if (!this.isValidListRowOrder(merged)) {
-      return;
-    }
-    void this.persistFromVisibleRowOrder(merged);
-  }
-
-  /** リスト表示のフラット行順からルート順・各親の子順を保存 */
-  private persistFromVisibleRowOrder(
-    merged: { kind: 'root' | 'sub'; task: Task; parentId?: string }[],
-  ): void {
-    const roots: Task[] = [];
-    let i = 0;
-    while (i < merged.length) {
-      const row = merged[i];
-      if (row.kind !== 'root' || !row.task.id) {
-        i++;
-        continue;
-      }
-      roots.push(row.task);
-      const pid = row.task.id;
-      i++;
-      const subs: Task[] = [];
-      while (
-        i < merged.length &&
-        merged[i].kind === 'sub' &&
-        merged[i].parentId === pid
-      ) {
-        subs.push(merged[i].task);
-        i++;
-      }
-      if (subs.length > 0) {
-        void this.persistSubtaskOrder(pid, subs);
-      }
-    }
-    void this.persistTaskOrder(roots);
   }
 
   /** カンバン設定ドキュメント参照 */
@@ -872,407 +610,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     return out.length > 0 ? out : [...DEFAULT_KANBAN_COLUMNS];
   }
 
-  kanbanListId(columnId: string): string {
-    return `kanban-${columnId}`;
-  }
-
-  /** 列同士をつなぎ、列間ドラッグで移動できるようにする */
-  kanbanConnectedIds(): string[] {
-    return this.kanbanColumnList.map((c) => this.kanbanListId(c.id));
-  }
-
-  private parseKanbanColumnId(containerId: string): string {
-    return containerId.startsWith('kanban-') ? containerId.slice('kanban-'.length) : '';
-  }
-
-  /** タスクが属するカンバン列 ID（未設定は先頭列） */
-  columnIdForTask(task: Task): string {
-    const first = this.kanbanColumnList[0]?.id ?? '';
-    const k = typeof task.kanbanColumnId === 'string' ? task.kanbanColumnId.trim() : '';
-    if (k && this.kanbanColumnList.some((c) => c.id === k)) {
-      return k;
-    }
-    return first;
-  }
-
-  tasksForKanbanColumnId(colId: string): Task[] {
-    const filtered = this.taskListDataService
-      .filteredTasks()
-      .filter((t) => !t.parentTaskId);
-    const inCol = filtered.filter((t) => this.columnIdForTask(t) === colId);
-    return [...inCol].sort((a, b) => {
-      const c = this.kanbanOrderNum(a) - this.kanbanOrderNum(b);
-      if (c !== 0) {
-        return c;
-      }
-      return (a.title ?? '').localeCompare(b.title ?? '');
-    });
-  }
-
-  /** カンバン内で同一親の子だけをつなぐドロップリスト ID（列リストとは接続しない） */
-  kanbanSubListId(parentId: string): string {
-    return `kanban-sub-${parentId}`;
-  }
-
-  private buildKanbanColumnState(): Record<string, Task[]> {
-    const state: Record<string, Task[]> = {};
-    for (const c of this.kanbanColumnList) {
-      state[c.id] = this.tasksForKanbanColumnId(c.id);
-    }
-    return state;
-  }
-
-  private orderedSelectedKanbanRoots(state: Record<string, Task[]>): Task[] {
-    const out: Task[] = [];
-    for (const c of this.kanbanColumnList) {
-      for (const t of state[c.id] ?? []) {
-        const id = t.id;
-        if (id && !t.parentTaskId && this.selectedTaskIdSet.has(id)) {
-          out.push(t);
-        }
-      }
-    }
-    return out;
-  }
-
-  private insertIndexInColumnAfterRemovingBlock(
-    origColumn: Task[],
-    cur: number,
-    blockIds: ReadonlySet<string>,
-  ): number {
-    const length = origColumn.length;
-    const end = Math.max(0, Math.min(cur + 1, length));
-    let k = 0;
-    for (let i = 0; i < end; i++) {
-      const id = origColumn[i]?.id;
-      if (id && !blockIds.has(id)) {
-        k++;
-      }
-    }
-    return k;
-  }
-
-  /** リスト行（task-list-item）のラベル帯色と同じ */
-  kanbanLabelColor(task: Task): string {
-    const c = task.label?.trim();
-    return c || '#e0e0e0';
-  }
-
-  /** カンバン内で同一親の子だけをつなぐドロップリストでドラッグで移動*/
-  onKanbanSubtaskDrop(ev: CdkDragDrop<Task>, parentId: string): void {
-    const arr = [...this.subtasksForParentKanban(parentId)];
-    const prev = ev.previousIndex;
-    const cur = ev.currentIndex;
-    if (prev < 0 || prev >= arr.length || cur < 0 || cur > arr.length) {
-      return;
-    }
-
-    const idxSel = (i: number) => {
-      const id = arr[i]?.id;
-      return !!id && this.selectedTaskIdSet.has(id);
-    };
-
-    const selectedIndices = new Set<number>();
-    for (let i = 0; i < arr.length; i++) {
-      if (idxSel(i)) {
-        selectedIndices.add(i);
-      }
-    }
-    if (!selectedIndices.has(prev)) {
-      selectedIndices.clear();
-      selectedIndices.add(prev);
-    }
-
-    if (selectedIndices.size === 1) {
-      if (prev === cur) {
-        return;
-      }
-      const single = [...arr];
-      moveItemInArray(single, prev, cur);
-      void this.persistKanbanSubtaskOrder(parentId, single);
-      return;
-    }
-
-    const sortedSel = [...selectedIndices].sort((a, b) => a - b);
-    const block = sortedSel.map((i) => arr[i]);
-    const rest = arr.filter((_, i) => !selectedIndices.has(i));
-    const k = this.insertionIndexInRestForMulti(arr.length, selectedIndices, cur);
-    const merged = [...rest.slice(0, k), ...block, ...rest.slice(k)];
-    void this.persistKanbanSubtaskOrder(parentId, merged);
-  }
-
-  /** ドラッグで列間移動*/
-  onKanbanDrop(ev: CdkDragDrop<Task>): void {
-    const task = ev.item.data as Task | undefined;
-    if (!task?.id || task.parentTaskId) {
-      return;
-    }
-    const fromId = this.parseKanbanColumnId(ev.previousContainer.id);
-    const toId = this.parseKanbanColumnId(ev.container.id);
-    if (!fromId || !toId || !this.kanbanColumnList.some((c) => c.id === fromId)) {
-      return;
-    }
-    if (!this.kanbanColumnList.some((c) => c.id === toId)) {
-      return;
-    }
-
-    const state = this.buildKanbanColumnState();
-    const prev = ev.previousIndex;
-    const cur = ev.currentIndex;
-
-    let block = this.orderedSelectedKanbanRoots(state);
-    if (block.length === 0 || !block.some((t) => t.id === task.id)) {
-      block = [task];
-    }
-    const blockIds = new Set<string>();
-    for (const t of block) {
-      if (t.id) {
-        blockIds.add(t.id);
-      }
-    }
-
-    if (block.length === 1) {
-      if (fromId === toId) {
-        const arr = [...(state[fromId] ?? [])];
-        if (arr.length === 0) {
-          return;
-        }
-        if (prev < 0 || prev >= arr.length || cur < 0 || cur > arr.length) {
-          return;
-        }
-        if (prev === cur) {
-          return;
-        }
-        const single = [...arr];
-        moveItemInArray(single, prev, cur);
-        state[fromId] = single;
-        void this.persistKanbanBoardOrder(state);
-        return;
-      }
-
-      const fromArr = [...(state[fromId] ?? [])];
-      const toArr = [...(state[toId] ?? [])];
-      if (prev < 0 || prev >= fromArr.length || cur < 0 || cur > toArr.length) {
-        return;
-      }
-      const fa = [...fromArr];
-      const ta = [...toArr];
-      const [moved] = fa.splice(prev, 1);
-      if (!moved) {
-        return;
-      }
-      const updated: Task = { ...moved, kanbanColumnId: toId };
-      const insertAt = Math.min(Math.max(0, cur), ta.length);
-      ta.splice(insertAt, 0, updated);
-      state[fromId] = fa;
-      state[toId] = ta;
-      void this.persistKanbanBoardOrder(state);
-      return;
-    }
-
-    const origTo = [...(state[toId] ?? [])];
-    if (cur < 0 || cur > origTo.length) {
-      return;
-    }
-
-    for (const c of this.kanbanColumnList) {
-      const cid = c.id;
-      state[cid] = (state[cid] ?? []).filter((t) => !t.id || !blockIds.has(t.id));
-    }
-
-    const toAfter = [...(state[toId] ?? [])];
-    const blockTouchesDest = block.some((t) => t.id && origTo.some((o) => o.id === t.id));
-    const insertAt = blockTouchesDest
-      ? this.insertIndexInColumnAfterRemovingBlock(origTo, cur, blockIds)
-      : Math.min(Math.max(0, cur), toAfter.length);
-
-    const movedBlock = block.map((t) => ({ ...t, kanbanColumnId: toId }));
-    state[toId] = [...toAfter.slice(0, insertAt), ...movedBlock, ...toAfter.slice(insertAt)];
-    void this.persistKanbanBoardOrder(state);
-  }
-
-  private async persistKanbanBoardOrder(state: Record<string, Task[]>): Promise<void> {
-    const flat: Task[] = [];
-    for (const col of this.kanbanColumnList) {
-      flat.push(...(state[col.id] ?? []));
-    }
-    const batch = writeBatch(this.firestore);
-    const firstCol = this.kanbanColumnList[0]?.id ?? null;
-    flat.forEach((t, i) => {
-      const id = t.id;
-      if (!id) {
-        return;
-      }
-      const r = this.taskDocRef(id);
-      if (!r) {
-        return;
-      }
-      const kid = t.kanbanColumnId ?? firstCol;
-      batch.update(r, { kanbanOrderIndex: i * 1000, kanbanColumnId: kid });
-      for (const ch of this.taskListDataService.tasks()) {
-        if (ch.parentTaskId === id && ch.id) {
-          const r2 = this.taskDocRef(ch.id);
-          if (r2) {
-            batch.update(r2, { kanbanColumnId: kid });
-          }
-        }
-      }
-    });
-    try {
-      this.clearTaskSelection();
-      await batch.commit();
-    } catch (e) {
-      console.error('persistKanbanBoardOrder failed:', e);
-    }
-  }
-
-  async renameKanbanColumn(col: KanbanColumn): Promise<void> {
-    const n = window.prompt('リスト名', col.title);
-    if (n === null) {
-      return;
-    }
-    const title = n.trim() || '（無題）';
-    const ref = this.kanbanBoardDocRef();
-    if (!ref) {
-      return;
-    }
-    const next = this.kanbanColumnList.map((c) =>
-      c.id === col.id ? { ...c, title } : c,
-    );
-    try {
-      await setDoc(ref, { columns: next }, { merge: true });
-      await this.taskActivityLog.logKanbanUpdate(this.taskScope, {
-        subjectId: col.id,
-        subjectTitle: title,
-      });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : '更新に失敗しました');
-    }
-  }
-
-  async deleteKanbanColumn(col: KanbanColumn): Promise<void> {
-    if (this.kanbanColumnList.length <= 1) {
-      alert('最後の1列は削除できません。');
-      return;
-    }
-    if (
-      !confirm(
-        `「${col.title}」を削除しますか？\nこの列のタスクは他の列へ移動します。`,
-      )
-    ) {
-      return;
-    }
-    const ref = this.kanbanBoardDocRef();
-    if (!ref) {
-      return;
-    }
-    const idx = this.kanbanColumnList.findIndex((c) => c.id === col.id);
-    if (idx < 0) {
-      return;
-    }
-    const fallbackId =
-      idx === 0 ? this.kanbanColumnList[1].id : this.kanbanColumnList[0].id;
-    const nextCols = this.kanbanColumnList.filter((c) => c.id !== col.id);
-    const affected = this.taskListDataService.tasks().filter((t) => {
-      const cid = this.columnIdForTask(t);
-      return cid === col.id;
-    });
-    try {
-      await this.taskActivityLog.logKanbanDelete(this.taskScope, {
-        subjectId: col.id,
-        subjectTitle: col.title,
-      });
-      const batch = writeBatch(this.firestore);
-      for (const t of affected) {
-        const tid = t.id;
-        if (!tid) {
-          continue;
-        }
-        const r = this.taskDocRef(tid);
-        if (r) {
-          batch.update(r, { kanbanColumnId: fallbackId });
-        }
-      }
-      await batch.commit();
-      await setDoc(ref, { columns: nextCols }, { merge: true });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : '削除に失敗しました');
-    }
-  }
-
-  async addKanbanColumn(): Promise<void> {
-    const ref = this.kanbanBoardDocRef();
-    if (!ref) {
-      return;
-    }
-    const id = `kb_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
-    const title = `リスト ${this.kanbanColumnList.length + 1}`;
-    const next = [...this.kanbanColumnList, { id, title }];
-    try {
-      await setDoc(ref, { columns: next }, { merge: true });
-      await this.taskActivityLog.logKanbanCreate(this.taskScope, {
-        subjectId: id,
-        subjectTitle: title,
-      });
-    } catch (e) {
-      alert(e instanceof Error ? e.message : '追加に失敗しました');
-    }
-  }
-
-  onKanbanSubtasksToggleClick(ev: MouseEvent, task: Task): void {
-    ev.preventDefault();
-    ev.stopPropagation();
-    const id = task.id;
-    if (!id) {
-      return;
-    }
-    if (this.hasChildTasks(id)) {
-      this.toggleSubtasksExpanded(id);
-    } else {
-      this.openSubtaskDialog(task);
-    }
-  }
-
-  onKanbanCardClick(ev: MouseEvent, task: Task): void {
-    const el = ev.target as HTMLElement | null;
-    if (!el || el.closest('button') || el.closest('.kanban-label-strip')) {
-      return;
-    }
-    ev.preventDefault();
-    const id = task.id;
-    if (!id) {
-      return;
-    }
-    const prev = task.status;
-    const next = nextTaskStatus(prev);
-    const ref = this.taskDocRef(id);
-    if (!ref) {
-      return;
-    }
-    void updateDoc(ref, taskStatusTransitionPatch(next, prev))
-      .then(() =>
-        this.taskActivityLog.logUpdate(this.taskScope, {
-          subjectId: id,
-          subjectTitle: task.title,
-        }),
-      )
-      .catch((err) => console.error('kanban status update failed:', err));
-  }
-
-  openKanbanDetail(ev: Event, task: Task): void {
-    ev.preventDefault();
-    ev.stopPropagation();
-    const id = task.id;
-    if (!id) {
-      return;
-    }
-    saveTaskShellScrollPosition();
-    void this.router.navigate(['/task', taskDetailScopeParam(this.taskScope), id], {
-      queryParams: { from: 'kanban' },
-    });
-  }
-
-  private taskDocRef(taskId: string) {
+  taskDocRef(taskId: string) {
     const userId = this.auth.userId();
     if (!userId) {
       return null;
@@ -1301,62 +639,51 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
   openAddTaskDialog(): void {
     const date = this.ctxDate;
     this.ctxDate = null;
-    const ref = this.dialog.open(TaskFormDialog, {
-      width: 'min(96vw, 560px)',
-      autoFocus: 'first-tabbable',
-      data: {
-        taskScope: this.taskScope,
-        projectMembers: this.projectMembers,
-        date,
-      },
-    });
-    ref.afterClosed().subscribe((task: Task | undefined) => {
-      if (task) {
-        this.addTask(task);
-      }
-    });
+    this.ContextActions.openAddTask(this.taskScope, this.projectMembers, date, (task: Task) => this.addTask(task));
   }
 
   openSubtaskDialog(parent: Task): void {
     const date = this.ctxDate;
     this.ctxDate = null;
-    const ref = this.dialog.open(TaskFormDialog, {
-      width: 'min(96vw, 560px)',
-      autoFocus: 'first-tabbable',
-      data: {
-        taskScope: this.taskScope,
-        projectMembers: this.projectMembers,
-        dialogMode: 'subtask' as const,
-        parentTask: parent,
-        date,
-      },
-    });
-    ref.afterClosed().subscribe((task: Task | undefined) => {
-      if (task) {
-        this.addSubtask(parent, task);
-      }
-    });
+    this.ContextActions.openAddSubtask(this.taskScope, this.projectMembers, parent, date, (task: Task) => this.addSubtask(parent, task));
+  }
+
+  /** コンテキストメニュー用の親側状態（子はアンカー位置のみ保持。ハンドラはここを参照する） */
+  private syncCtxMenuStateForTask(task: Task): void {
+    const tid = task.id;
+    if (
+      tid &&
+      this.DataService.selectedTaskIdSet().size >= 2 &&
+      this.DataService.isTaskSelected(tid)
+    ) {
+      this.ctxBulkMode = true;
+      this.ctxBulkIds = [...this.DataService.selectedTaskIdSet()];
+    } else {
+      this.ctxBulkMode = false;
+      this.ctxBulkIds = [];
+    }
+    this.ctxTask = task;
   }
 
   openTaskContextMenu(ev: MouseEvent, task: Task): void {
     ev.preventDefault();
     ev.stopPropagation();
-    this.openTaskContextMenuAt(ev.clientX, ev.clientY, task);
+    this.syncCtxMenuStateForTask(task);
+    this.taskCtxMenu?.open(ev.clientX, ev.clientY, task);
   }
 
-  openTaskContextMenuAt(clientX: number, clientY: number, task: Task): void {
-    this.ctxTask = task;
-    const tid = task.id;
-    if (tid && this.selectedTaskIdSet.size >= 2 && this.selectedTaskIdSet.has(tid)) {
-      this.ctxBulkMode = true;
-      this.ctxBulkIds = [...this.selectedTaskIdSet];
-    } else {
-      this.ctxBulkMode = false;
-      this.ctxBulkIds = [];
-    }
-    this.contextMenuX = clientX;
-    this.contextMenuY = clientY;
-    queueMicrotask(() => this.taskCtxMenuTrigger?.openMenu());
+  onCalendarTaskContextMenu(payload: {
+    clientX: number;
+    clientY: number;
+    task: Task;
+  }): void {
+    this.syncCtxMenuStateForTask(payload.task);
+    this.taskCtxMenu?.open(payload.clientX, payload.clientY, payload.task);
+  }
+
+  /** カンバン子の Output 用（テンプレの $event を MouseEvent + Task に絞る） */
+  onKanbanTaskContextMenu(payload: { ev: MouseEvent; task: Task }): void {
+    this.openTaskContextMenu(payload.ev, payload.task);
   }
 
   openDayContextMenuAt(clientX: number, clientY: number, date: Date): void {
@@ -1388,33 +715,11 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     if (!confirm(`${ids.length}件のタスクを削除しますか？\n選択されていない子タスクも削除されます。`)) {
       return;
     }
-    void this.bulkDeleteTaskIds(ids).then(() => this.clearTaskSelection());
+    void this.bulkDeleteTaskIds(ids).then(() => this.DataService.clearTaskSelection());
   }
 
   ctxDuplicateTasks(): void {
-    const tasks: Task[] = [];
-    if (this.ctxBulkMode && this.ctxBulkIds.length >= 2) {
-      const byId = new Map(this.taskListDataService.tasks().map((t) => [t.id, t]));
-      for (const id of this.ctxBulkIds) {
-        const t = byId.get(id);
-        if (t) {
-          tasks.push(t);
-        }
-      }
-    } else if (this.ctxTask?.id) {
-      tasks.push(this.ctxTask);
-    }
-    if (tasks.length === 0) {
-      return;
-    }
-    this.dialog.open(TaskDuplicateDialog, {
-      width: 'min(520px, 92vw)',
-      autoFocus: 'first-tabbable',
-      data: {
-        tasks,
-        taskScope: this.taskScope,
-      },
-    });
+    this.ContextActions.openDuplicateDialog(this.ctxBulkMode, this.ctxBulkIds, this.ctxTask, this.taskScope);
   }
 
   /** 各 ID について子ツリーを含めて削除（重複はまとめる） */
@@ -1425,7 +730,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         all.add(x);
       }
     }
-    const byId = new Map(this.taskListDataService.tasks().map((t) => [t.id, t]));
+    const byId = new Map(this.DataService.tasks().map((t) => [t.id, t]));
     const batch = writeBatch(this.firestore);
     for (const id of all) {
       const t = byId.get(id);
@@ -1453,7 +758,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     const out = new Set<string>();
     const walk = (pid: string) => {
       out.add(pid);
-      for (const x of this.taskListDataService.tasks()) {
+      for (const x of this.DataService.tasks()) {
         if (x.parentTaskId === pid && x.id) {
           walk(x.id);
         }
@@ -1474,13 +779,7 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
         : this.viewMode === 'calendar'
           ? 'calendar'
           : 'list';
-    saveTaskShellScrollPosition();
-    void this.router.navigate(['/task', taskDetailScopeParam(this.taskScope), t.id], {
-      queryParams: {
-        from,
-        ...(this.viewMode === 'calendar' ? { cal: this.calendarGranularity } : {}),
-      },
-    });
+    this.ContextActions.navigateToDetail(t, this.taskScope, from);
   }
 
   ctxOpenCreateSubtaskDialog(): void {
@@ -1567,77 +866,8 @@ export class TaskList implements OnInit, OnDestroy, OnChanges {
     }
   }
 
-  private async persistTaskOrder(ordered: Task[]): Promise<void> {
-    const batch = writeBatch(this.firestore);
-    ordered.forEach((task, index) => {
-      const id = task.id;
-      if (!id) {
-        return;
-      }
-      const r = this.taskDocRef(id);
-      if (!r) {
-        return;
-      }
-      const v = index * 1000;
-      batch.update(r, { listOrderIndex: v });
-    });
-    try {
-      this.clearTaskSelection();
-      await batch.commit();
-    } catch (e) {
-      console.error('persistTaskOrder failed:', e);
-    }
-  }
-
-  private async persistSubtaskOrder(parentId: string, ordered: Task[]): Promise<void> {
-    const batch = writeBatch(this.firestore);
-    ordered.forEach((task, index) => {
-      const id = task.id;
-      if (!id) {
-        return;
-      }
-      if (task.parentTaskId !== parentId) {
-        return;
-      }
-      const r = this.taskDocRef(id);
-      if (!r) {
-        return;
-      }
-      const v = index * 1000;
-      batch.update(r, { listOrderIndex: v });
-    });
-    try {
-      await batch.commit();
-    } catch (e) {
-      console.error('persistSubtaskOrder failed:', e);
-    }
-  }
-
-  private async persistKanbanSubtaskOrder(parentId: string, ordered: Task[]): Promise<void> {
-    const batch = writeBatch(this.firestore);
-    ordered.forEach((task, index) => {
-      const id = task.id;
-      if (!id) {
-        return;
-      }
-      if (task.parentTaskId !== parentId) {
-        return;
-      }
-      const r = this.taskDocRef(id);
-      if (!r) {
-        return;
-      }
-      batch.update(r, { kanbanOrderIndex: index * 1000 });
-    });
-    try {
-      await batch.commit();
-    } catch (e) {
-      console.error('persistKanbanSubtaskOrder failed:', e);
-    }
-  }
-
   ngOnDestroy() {
     this.subscriptions.unsubscribe();
-    this.taskListDataService.destroy();
+    this.DataService.destroy();
   }
 }

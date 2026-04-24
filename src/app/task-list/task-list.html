@@ -1,36 +1,13 @@
-<button
-  type="button"
-  #taskCtxMenuTrigger="matMenuTrigger"
-  [matMenuTriggerFor]="taskCtxMenu"
-  [style.left.px]="contextMenuX"
-  [style.top.px]="contextMenuY"
-  class="task-ctx-menu-anchor"
-  tabindex="-1"
-  aria-hidden="true"
-></button>
-<mat-menu #taskCtxMenu="matMenu">
-  @if (ctxBulkMode && ctxBulkIds.length >= 2) {
-    <button mat-menu-item type="button" (click)="ctxBulkEditNavigate()">
-      {{ ctxBulkIds.length }}件のタスクを編集
-    </button>
-    <button mat-menu-item type="button" (click)="ctxDuplicateTasks()">
-        {{ ctxBulkIds.length }}件のタスクを複製
-    </button>
-    <mat-divider />
-    <button mat-menu-item type="button" class="task-delete" (click)="ctxBulkDeleteFromMenu()">
-      {{ ctxBulkIds.length }}件のタスクを削除
-    </button>
-  }
-  @else {
-    <button mat-menu-item type="button" (click)="ctxNavigateDetail()">タスクを編集</button>
-    <button mat-menu-item type="button" (click)="ctxDuplicateTasks()">タスクを複製</button>
-    @if (ctxTask && !ctxTask.parentTaskId) {
-      <button mat-menu-item type="button" (click)="ctxOpenCreateSubtaskDialog()">子タスクを作成</button>
-    }
-    <mat-divider />
-    <button mat-menu-item type="button" class="task-delete" (click)="ctxDeleteTask()">タスクを削除</button>
-  }
-</mat-menu>
+<app-task-list-task-ctx-menu
+  #taskCtxMenuCmp
+  (navigateDetail)="ctxNavigateDetail()"
+  (duplicate)="ctxDuplicateTasks()"
+  (bulkEdit)="ctxBulkEditNavigate()"
+  (bulkDuplicate)="ctxDuplicateTasks()"
+  (bulkDelete)="ctxBulkDeleteFromMenu()"
+  (createSubtask)="ctxOpenCreateSubtaskDialog()"
+  (delete)="ctxDeleteTask()"
+/>
 
 <button
   type="button"
@@ -64,17 +41,17 @@
         <mat-label>色</mat-label>
         <mat-select
           multiple
-          [ngModel]="taskListDataService.filterState().colors"
-          (ngModelChange)="taskListDataService.patchFilter({ colors: $event })"
+          [ngModel]="DataService.filterState().colors"
+          (ngModelChange)="DataService.patchFilter({ colors: $event })"
           name="filterColors"
           panelClass="filter-colors-panel"
         >
           <mat-select-trigger>
             <span class="filter-color-trigger">
-              @if (taskListDataService.filterState().colors.length === 0) {
+              @if (DataService.filterState().colors.length === 0) {
                 <span class="filter-color-trigger-placeholder">すべて</span>
               } @else {
-                @for (c of taskListDataService.filterState().colors; track c) {
+                @for (c of DataService.filterState().colors; track c) {
                   <span
                     class="filter-color-chip"
                     [class.filter-color-chip-white]="c === '#FFFFFF'"
@@ -102,8 +79,8 @@
         <mat-label>優先度</mat-label>
         <mat-select
           multiple
-          [ngModel]="taskListDataService.filterState().priorities"
-          (ngModelChange)="taskListDataService.patchFilter({ priorities: $event })"
+          [ngModel]="DataService.filterState().priorities"
+          (ngModelChange)="DataService.patchFilter({ priorities: $event })"
           name="filterPriorities"
         >
           <mat-option *ngFor="let p of priorityFilterValues" [value]="p">{{ p }}</mat-option>
@@ -113,8 +90,8 @@
         <mat-label>進捗</mat-label>
         <mat-select
           multiple
-          [ngModel]="taskListDataService.filterState().statuses"
-          (ngModelChange)="taskListDataService.patchFilter({ statuses: $event })"
+          [ngModel]="DataService.filterState().statuses"
+          (ngModelChange)="DataService.patchFilter({ statuses: $event })"
           name="filterStatuses"
         >
           <mat-option *ngFor="let o of statusFilterOptions" [value]="o.value">{{ o.label }}</mat-option>
@@ -124,15 +101,15 @@
         <mat-form-field appearance="outline" class="filter-field filter-assignee" subscriptSizing="dynamic">
           <mat-label>担当者</mat-label>
           <mat-select
-            [ngModel]="taskListDataService.filterState().assignee"
-            (ngModelChange)="taskListDataService.patchFilter({ assignee: $event })"
+            [ngModel]="DataService.filterState().assignee"
+            (ngModelChange)="DataService.patchFilter({ assignee: $event })"
             name="filterAssignee"
             panelClass="filter-assignee-panel"
           >
             <mat-select-trigger class="filter-assignee-trigger">
-              @if (taskListDataService.filterState().assignee === 'all') {
+              @if (DataService.filterState().assignee === 'all') {
                 <span>担当: すべて</span>
-              } @else if (taskListDataService.filterState().assignee === 'unassigned') {
+              } @else if (DataService.filterState().assignee === 'unassigned') {
                 <span>未割り当て</span>
               } @else if (filterSelectedMember(); as sm) {
                 <span class="filter-assignee-trigger-row">
@@ -145,7 +122,7 @@
                   <span>{{ sm.displayName }}</span>
                 </span>
               } @else {
-                <span>{{ taskListDataService.filterState().assignee }}</span>
+                <span>{{ DataService.filterState().assignee }}</span>
               }
             </mat-select-trigger>
             <mat-option value="all">担当: すべて</mat-option>
@@ -166,8 +143,8 @@
         <mat-form-field appearance="outline" class="filter-field filter-due" subscriptSizing="dynamic">
           <mat-label>締切/予定</mat-label>
           <mat-select
-            [ngModel]="taskListDataService.filterState().dueDate"
-            (ngModelChange)="taskListDataService.patchFilter({ dueDate: $event })"
+            [ngModel]="DataService.filterState().dueDate"
+            (ngModelChange)="DataService.patchFilter({ dueDate: $event })"
             name="filterDue"
           >
             <mat-option *ngFor="let o of dueDateFilterOptions" [value]="o.value">{{ o.label }}</mat-option>
@@ -194,8 +171,8 @@
       <mat-form-field appearance="outline" class="filter-field sort-select" subscriptSizing="dynamic">
         <mat-label>第1条件</mat-label>
         <mat-select
-          [ngModel]="taskListDataService.sortKeys().f1"
-          (ngModelChange)="taskListDataService.patchSortKeys({ f1: $event })"
+          [ngModel]="DataService.sortKeys().f1"
+          (ngModelChange)="DataService.patchSortKeys({ f1: $event })"
           name="sortKey1"
         >
           <mat-option [value]="null">（なし）</mat-option>
@@ -205,8 +182,8 @@
       <mat-form-field appearance="outline" class="filter-field sort-select" subscriptSizing="dynamic">
         <mat-label>第2条件</mat-label>
         <mat-select
-          [ngModel]="taskListDataService.sortKeys().f2"
-          (ngModelChange)="taskListDataService.patchSortKeys({ f2: $event })"
+          [ngModel]="DataService.sortKeys().f2"
+          (ngModelChange)="DataService.patchSortKeys({ f2: $event })"
           name="sortKey2"
         >
           <mat-option [value]="null">（なし）</mat-option>
@@ -216,8 +193,8 @@
       <mat-form-field appearance="outline" class="filter-field sort-select" subscriptSizing="dynamic">
         <mat-label>第3条件</mat-label>
         <mat-select
-          [ngModel]="taskListDataService.sortKeys().f3"
-          (ngModelChange)="taskListDataService.patchSortKeys({ f3: $event })"
+          [ngModel]="DataService.sortKeys().f3"
+          (ngModelChange)="DataService.patchSortKeys({ f3: $event })"
           name="sortKey3"
         >
           <mat-option [value]="null">（なし）</mat-option>
@@ -225,8 +202,8 @@
         </mat-select>
       </mat-form-field>
       <mat-radio-group
-        [ngModel]="taskListDataService.sortKeys().asc"
-        (ngModelChange)="taskListDataService.patchSortKeys({ asc: $event })"
+        [ngModel]="DataService.sortKeys().asc"
+        (ngModelChange)="DataService.patchSortKeys({ asc: $event })"
         name="sortDir"
         class="sort-radio-group"
       >
@@ -286,244 +263,22 @@
 }
 
 @if (viewMode === 'list') {
-  <div class="task-list-shell mat-elevation-z1">
-    <div
-      cdkDropList
-      class="task-drop-list"
-      (cdkDropListDropped)="onTaskDrop($event)"
-      [cdkDropListDisabled]="!canReorder"
-    >
-      @for (task of displayRootTasks; track task.id) {
-        <div
-          cdkDrag
-          class="task-list-drag-row"
-          [cdkDragData]="{ kind: 'root', task }"
-          [cdkDragDisabled]="!canReorder"
-        >
-          <app-task-list-item
-            [task]="task"
-            [taskScope]="taskScope"
-            [projectMembers]="projectMembers"
-            [showDragHandle]="canReorder"
-            [showSubtasksToggle]="true"
-            [hasSubtasks]="hasChildTasks(task.id)"
-            [subtasksExpanded]="isSubtasksExpanded(task.id)"
-            [selectionMode]="true"
-            [selected]="isTaskSelected(task.id)"
-            (selectedChange)="onTaskSelectionChange(task, $event)"
-            (toggleSubtasksUi)="onSubtasksToggleForListItem(task)"
-            (contextMenuRequest)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
-            (deleteRequested)="onDeleteTaskFromItem($event)"
-          ></app-task-list-item>
-        </div>
-        @if (task.id && isSubtasksExpanded(task.id)) {
-          @for (st of subtasksForParentList(task.id); track st.id) {
-            <div
-              cdkDrag
-              class="task-list-drag-row task-list-drag-row--sub"
-              [cdkDragData]="{ kind: 'sub', task: st, parentId: task.id }"
-              [cdkDragDisabled]="!canReorder"
-            >
-              <app-task-list-item
-                [task]="st"
-                [taskScope]="taskScope"
-                [projectMembers]="projectMembers"
-                [showDragHandle]="canReorder"
-                [isSubtask]="true"
-                [selectionMode]="true"
-                [selected]="isTaskSelected(st.id)"
-                (selectedChange)="onTaskSelectionChange(st, $event)"
-                (contextMenuRequest)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
-                (deleteRequested)="onDeleteTaskFromItem($event)"
-              ></app-task-list-item>
-            </div>
-          }
-        }
-      }
-    </div>
-  </div>
+  <app-task-list-list-view 
+    [taskScope]="taskScope"
+    [projectMembers]="projectMembers"
+    [taskDocRef]="taskDocRef.bind(this)"
+    (openSubtaskDialog)="openSubtaskDialog($event)"
+    (contextMenuRequest)="onKanbanTaskContextMenu($event)"
+    (deleteRequested)="onDeleteTaskFromItem($event)"
+  />
 } @else if (viewMode === 'kanban') {
-  <div class="kanban-board-outer">
-    <div
-      class="kanban-board-inner"
-      [class.kanban-board-inner--fill]="kanbanColumnList.length <= 5"
-    >
-      @for (col of kanbanColumnList; track col.id) {
-        <div class="kanban-column">
-          <div class="kanban-column-head">
-            <h3 class="kanban-column-title">{{ col.title }}</h3>
-            <button
-              mat-button
-              type="button"
-              class="kanban-column-edit-btn"
-              [matMenuTriggerFor]="kanbanColumnEditMenu"
-              (mousedown)="kanbanEditColumn = col; $event.stopPropagation()"
-              (click)="$event.stopPropagation()"
-            >
-              編集
-            </button>
-          </div>
-          <div
-            cdkDropList
-            [id]="kanbanListId(col.id)"
-            [cdkDropListConnectedTo]="kanbanConnectedIds()"
-            class="kanban-drop-list"
-            (cdkDropListDropped)="onKanbanDrop($event)"
-          >
-            @for (task of tasksForKanbanColumnId(col.id); track task.id) {
-              <div class="kanban-card-stack">
-                <div
-                  cdkDrag
-                  [cdkDragData]="task"
-                  class="kanban-card"
-                  [style.--label-color]="kanbanLabelColor(task)"
-                  (click)="onKanbanCardClick($event, task)"
-                  (contextmenu)="openTaskContextMenu($event, task)"
-                >
-                  <div
-                    class="kanban-label-strip kanban-label-strip--with-checkbox kanban-label-strip--with-toggle"
-                    [style.background-color]="kanbanLabelColor(task)"
-                    (click)="$event.stopPropagation()"
-                  >
-                    <mat-checkbox
-                      class="kanban-label-strip-checkbox"
-                      [checked]="isTaskSelected(task.id)"
-                      (change)="onTaskSelectionChange(task, $event.checked)"
-                      (click)="$event.stopPropagation()"
-                      [attr.aria-label]="'選択: ' + (task.title || '（無題）')"
-                    />
-                    <button
-                      type="button"
-                      class="kanban-subtasks-toggle"
-                      [attr.aria-expanded]="
-                        hasChildTasks(task.id) ? isSubtasksExpanded(task.id) : null
-                      "
-                      [attr.aria-label]="
-                        !hasChildTasks(task.id)
-                          ? '子タスクを追加'
-                          : isSubtasksExpanded(task.id)
-                            ? '子タスクを格納'
-                            : '子タスクを表示'
-                      "
-                      (click)="onKanbanSubtasksToggleClick($event, task)"
-                    >
-                      {{
-                        !hasChildTasks(task.id)
-                          ? '▽'
-                          : isSubtasksExpanded(task.id)
-                            ? '▲'
-                            : '▼'
-                      }}
-                    </button>
-                  </div>
-                  <div
-                    class="kanban-card-main"
-                    [class.done]="task.status === 'done'"
-                    [class.in-progress]="task.status === 'in_progress'"
-                  >
-                    <span class="kanban-card-title">{{ task.title || '（無題）' }}</span>
-                    <button
-                      mat-stroked-button
-                      type="button"
-                      class="kanban-detail-btn"
-                      (click)="openKanbanDetail($event, task)"
-                    >
-                      詳細
-                    </button>
-                  </div>
-                </div>
-                @if (task.id && isSubtasksExpanded(task.id)) {
-                  <div
-                    class="kanban-subtasks"
-                    cdkDropList
-                    [id]="kanbanSubListId(task.id)"
-                    (cdkDropListDropped)="onKanbanSubtaskDrop($event, task.id!)"
-                  >
-                    @for (st of subtasksForParentKanban(task.id); track st.id) {
-                      <div
-                        cdkDrag
-                        [cdkDragData]="st"
-                        class="kanban-sub-card"
-                        [style.--label-color]="kanbanLabelColor(st)"
-                        (click)="onKanbanCardClick($event, st)"
-                        (contextmenu)="openTaskContextMenu($event, st)"
-                      >
-                        <div
-                          class="kanban-label-strip kanban-label-strip--with-checkbox"
-                          [style.background-color]="kanbanLabelColor(st)"
-                          (click)="$event.stopPropagation()"
-                        >
-                          <mat-checkbox
-                            class="kanban-label-strip-checkbox"
-                            [checked]="isTaskSelected(st.id)"
-                            (change)="onTaskSelectionChange(st, $event.checked)"
-                            (click)="$event.stopPropagation()"
-                            [attr.aria-label]="'選択: ' + (st.title || '（無題）')"
-                          />
-                        </div>
-                        <div
-                          class="kanban-card-main"
-                          [class.done]="st.status === 'done'"
-                          [class.in-progress]="st.status === 'in_progress'"
-                        >
-                          <span class="kanban-card-title">{{ st.title || '（無題）' }}</span>
-                          <button
-                            mat-stroked-button
-                            type="button"
-                            class="kanban-detail-btn"
-                            (click)="openKanbanDetail($event, st)"
-                          >
-                            詳細
-                          </button>
-                        </div>
-                      </div>
-                    }
-                  </div>
-                }
-              </div>
-            }
-          </div>
-        </div>
-      }
-      <div class="kanban-column kanban-add-list-column">
-        <div class="kanban-column-head">
-          <button
-            mat-button
-            type="button"
-            class="kanban-column-edit-btn kanban-add-list-edit-placeholder"
-            tabindex="-1"
-            disabled
-            aria-hidden="true"
-          >
-            編集
-          </button>
-        </div>
-        <div class="kanban-drop-list kanban-add-list-drop">
-          <button
-            type="button"
-            class="kanban-add-list-plus"
-            (click)="addKanbanColumn()"
-            aria-label="カンバンにリストを追加"
-          >
-            ＋
-          </button>
-        </div>
-      </div>
-    </div>
-    <mat-menu #kanbanColumnEditMenu="matMenu">
-      @if (kanbanEditColumn; as ec) {
-        <button mat-menu-item type="button" (click)="renameKanbanColumn(ec)">名称の変更</button>
-        <button
-          mat-menu-item
-          type="button"
-          [disabled]="kanbanColumnList.length <= 1"
-          (click)="deleteKanbanColumn(ec)"
-        >
-          カンバンの削除
-        </button>
-      }
-    </mat-menu>
-  </div>
+  <app-task-list-kanban-view
+    [taskScope]="taskScope"
+    [kanbanColumnList]="kanbanColumnList"
+    [taskDocRef]="taskDocRef.bind(this)"
+    (openTaskContextMenu)="onKanbanTaskContextMenu($event)"
+    (openSubtaskDialog)="openSubtaskDialog($event)"
+  />
 } @else {
   <div class="task-calendar-shell mat-elevation-z1">
     <app-task-calendar
@@ -535,7 +290,7 @@
       (viewDateChange)="onCalendarViewDateChange($event)"
       (weekdayStartChange)="onCalendarWeekdayStartChange($event)"
       (pickCalendarDay)="onPickCalendarDayFromMonth($event)"
-      (taskContextMenu)="openTaskContextMenuAt($event.clientX, $event.clientY, $event.task)"
+      (taskContextMenu)="onCalendarTaskContextMenu($event)"
       (dayContextMenu)="openDayContextMenuAt($event.clientX, $event.clientY, $event.date)"
     ></app-task-calendar>
   </div>

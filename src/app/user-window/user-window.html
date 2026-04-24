@@ -2,6 +2,16 @@
   <div class="nav-cluster nav-cluster-start nav-tabs-host">
     <mat-tab-nav-panel #mainNavPanel class="main-tab-nav-panel">
       <div class="nav-tabs-toolbar">
+        <button
+          type="button"
+          class="multi-cal-btn"
+          [class.active]="isProjectHubActive()"
+          (click)="selectProjectHub()"
+          aria-label="カレンダーを表示"
+          matTooltip="カレンダーを表示"
+        >
+          <mat-icon>calendar_month</mat-icon>
+        </button>
         <div class="nav-tabs-scroll-wrap">
         <nav
           mat-tab-nav-bar
@@ -81,7 +91,7 @@
           [class.active]="isProjectHubActive()"
           (click)="selectProjectHub()"
           aria-label="タスクリストを追加"
-          title="タスクリストを追加"
+          matTooltip="タスクリストを追加"
         >
           ＋
         </button>

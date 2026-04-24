@@ -1,0 +1,181 @@
+<div class="kanban-board-outer">
+    <div
+    class="kanban-board-inner"
+    [class.kanban-board-inner--fill]="kanbanColumnList.length <= 5"
+    >
+    @for (col of kanbanColumnList; track col.id) {
+        <div class="kanban-column">
+        <div class="kanban-column-head">
+            <h3 class="kanban-column-title">{{ col.title }}</h3>
+            <button
+            mat-button
+            type="button"
+            class="kanban-column-edit-btn"
+            [matMenuTriggerFor]="kanbanColumnEditMenu"
+            (mousedown)="kanbanEditColumn = col; $event.stopPropagation()"
+            (click)="$event.stopPropagation()"
+            >
+            編集
+            </button>
+        </div>
+        <div
+            cdkDropList
+            [id]="kanbanListId(col.id)"
+            [cdkDropListConnectedTo]="kanbanConnectedIds()"
+            class="kanban-drop-list"
+            (cdkDropListDropped)="onKanbanDrop($event)"
+        >
+            @for (task of tasksForKanbanColumnId(col.id); track task.id) {
+            <div class="kanban-card-stack">
+                <div
+                cdkDrag
+                [cdkDragData]="task"
+                class="kanban-card"
+                [style.--label-color]="kanbanLabelColor(task)"
+                (click)="onKanbanCardClick($event, task)"
+                (contextmenu)="openTaskContextMenu.emit({ ev: $event, task: task })"
+                >
+                <div
+                    class="kanban-label-strip kanban-label-strip--with-checkbox kanban-label-strip--with-toggle"
+                    [style.background-color]="kanbanLabelColor(task)"
+                    (click)="$event.stopPropagation()"
+                >
+                    <mat-checkbox
+                    class="kanban-label-strip-checkbox"
+                    [checked]="DataService.isTaskSelected(task.id)"
+                    (change)="DataService.onTaskSelectionChange(task, $event.checked)"
+                    (click)="$event.stopPropagation()"
+                    [attr.aria-label]="'選択: ' + (task.title || '（無題）')"
+                    />
+                    <button
+                    type="button"
+                    class="kanban-subtasks-toggle"
+                    [attr.aria-expanded]="
+                        DataService.hasChildTasks(task.id) ? DataService.isSubtasksExpanded(task.id) : null
+                    "
+                    [attr.aria-label]="
+                        !DataService.hasChildTasks(task.id)
+                        ? '子タスクを追加'
+                        : DataService.isSubtasksExpanded(task.id)
+                            ? '子タスクを格納'
+                            : '子タスクを表示'
+                    "
+                    (click)="onKanbanSubtasksToggleClick($event, task)"
+                    >
+                    {{
+                        !DataService.hasChildTasks(task.id)
+                        ? '▽'
+                        : DataService.isSubtasksExpanded(task.id)
+                            ? '▲'
+                            : '▼'
+                    }}
+                    </button>
+                </div>
+                <div
+                    class="kanban-card-main"
+                    [class.done]="task.status === 'done'"
+                    [class.in-progress]="task.status === 'in_progress'"
+                >
+                    <span class="kanban-card-title">{{ task.title || '（無題）' }}</span>
+                    <button
+                    mat-stroked-button
+                    type="button"
+                    class="kanban-detail-btn"
+                    (click)="openKanbanDetail($event, task)"
+                    >
+                    詳細
+                    </button>
+                </div>
+                </div>
+                @if (task.id && DataService.isSubtasksExpanded(task.id)) {
+                <div
+                    class="kanban-subtasks"
+                    cdkDropList
+                    [id]="kanbanSubListId(task.id)"
+                    (cdkDropListDropped)="onKanbanSubtaskDrop($event, task.id!)"
+                >
+                    @for (st of subtasksForParentKanban(task.id); track st.id) {
+                    <div
+                        cdkDrag
+                        [cdkDragData]="st"
+                        class="kanban-sub-card"
+                        [style.--label-color]="kanbanLabelColor(st)"
+                        (click)="onKanbanCardClick($event, st)"
+                        (contextmenu)="openTaskContextMenu.emit({ ev: $event, task: st })"
+                    >
+                        <div
+                        class="kanban-label-strip kanban-label-strip--with-checkbox"
+                        [style.background-color]="kanbanLabelColor(st)"
+                        (click)="$event.stopPropagation()"
+                        >
+                        <mat-checkbox
+                            class="kanban-label-strip-checkbox"
+                            [checked]="DataService.isTaskSelected(st.id)"
+                            (change)="DataService.onTaskSelectionChange(st, $event.checked)"
+                            (click)="$event.stopPropagation()"
+                            [attr.aria-label]="'選択: ' + (st.title || '（無題）')"
+                        />
+                        </div>
+                        <div
+                        class="kanban-card-main"
+                        [class.done]="st.status === 'done'"
+                        [class.in-progress]="st.status === 'in_progress'"
+                        >
+                        <span class="kanban-card-title">{{ st.title || '（無題）' }}</span>
+                        <button
+                            mat-stroked-button
+                            type="button"
+                            class="kanban-detail-btn"
+                            (click)="openKanbanDetail($event, st)"
+                        >
+                            詳細
+                        </button>
+                        </div>
+                    </div>
+                    }
+                </div>
+                }
+            </div>
+            }
+        </div>
+        </div>
+    }
+    <div class="kanban-column kanban-add-list-column">
+        <div class="kanban-column-head">
+        <button
+            mat-button
+            type="button"
+            class="kanban-column-edit-btn kanban-add-list-edit-placeholder"
+            tabindex="-1"
+            disabled
+            aria-hidden="true"
+        >
+            編集
+        </button>
+        </div>
+        <div class="kanban-drop-list kanban-add-list-drop">
+        <button
+            type="button"
+            class="kanban-add-list-plus"
+            (click)="addKanbanColumn()"
+            aria-label="カンバンにリストを追加"
+        >
+            ＋
+        </button>
+        </div>
+    </div>
+    </div>
+    <mat-menu #kanbanColumnEditMenu="matMenu">
+    @if (kanbanEditColumn; as ec) {
+        <button mat-menu-item type="button" (click)="renameKanbanColumn(ec)">名称の変更</button>
+        <button
+        mat-menu-item
+        type="button"
+        [disabled]="kanbanColumnList.length <= 1"
+        (click)="deleteKanbanColumn(ec)"
+        >
+        カンバンの削除
+        </button>
+    }
+    </mat-menu>
+</div>
